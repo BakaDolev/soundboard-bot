@@ -1,0 +1,186 @@
+import { MessageFlags } from 'discord.js';
+import {
+  getSession,
+  pauseSession,
+  resumeSession,
+  isPaused,
+  isInitiator
+} from '../audio/player.js';
+import { isAdmin } from '../admins.js';
+import { logger } from '../logger.js';
+import {
+  startVote,
+  handleVoteButton,
+  cancelVote
+} from '../voteHelper.js';
+
+// --- /sb pause --------------------------------------------------------------
+
+export async function handlePause(interaction) {
+  const guild = interaction.guild;
+  const session = getSession(guild.id);
+  if (!session) {
+    return interaction.reply({
+      content: 'Nothing is playing right now.',
+      flags: MessageFlags.Ephemeral
+    });
+  }
+  if (isPaused(guild.id)) {
+    return interaction.reply({
+      content: 'Playback is already paused. Use `/sb resume` to continue.',
+      flags: MessageFlags.Ephemeral
+    });
+  }
+
+  const userId = interaction.user.id;
+  const admin = isAdmin(guild, userId);
+  const initiator = isInitiator(guild.id, userId);
+
+  // --- Initiator or admin: instant ----------------------------------------
+  if (admin || initiator) {
+    if (pauseSession(guild.id, userId)) {
+      cancelVote('pause', guild.id);
+      logger.ok('pause instant', {
+        guildId: guild.id,
+        by: userId,
+        asAdmin: admin,
+        asInitiator: initiator
+      });
+      return interaction.reply({
+        content: `⏸ Playback paused. The bot will disconnect after 2 minutes if not resumed.`
+      });
+    }
+    return interaction.reply({
+      content: 'Could not pause playback.',
+      flags: MessageFlags.Ephemeral
+    });
+  }
+
+  // --- Other VC members: vote ---------------------------------------------
+  const voiceChannel = guild.channels.cache.get(session.channelId);
+  if (!voiceChannel) {
+    return interaction.reply({
+      content: 'Voice channel no longer exists.',
+      flags: MessageFlags.Ephemeral
+    });
+  }
+  const humans = voiceChannel.members.filter(m => !m.user.bot);
+  if (!humans.has(userId)) {
+    return interaction.reply({
+      content: `You need to be in <#${voiceChannel.id}> to vote.`,
+      flags: MessageFlags.Ephemeral
+    });
+  }
+
+  await startVote({
+    kind: 'pause',
+    interaction,
+    voiceChannel,
+    initialMessage: `⏸ <@${userId}> wants to pause the soundboard.`,
+    buttonLabel: 'Vote to Pause',
+    expiredMessage: '⌛ Pause vote expired.',
+    onPass: async () => {
+      pauseSession(guild.id, userId);
+      logger.ok('pause by vote', { guildId: guild.id });
+    }
+  });
+}
+
+export async function handlePauseVoteButton(interaction) {
+  return handleVoteButton({
+    kind: 'pause',
+    interaction,
+    noLongerActiveMessage: 'Nothing is playing anymore.',
+    passedMessageBuilder: (votes, needed) =>
+      `⏸ Playback paused — vote passed (${votes}/${needed}).`,
+    voteResolver: async () => {
+      const session = getSession(interaction.guild.id);
+      if (!session) return null;
+      const voiceChannel = interaction.guild.channels.cache.get(session.channelId);
+      if (!voiceChannel) return null;
+      const humans = voiceChannel.members.filter(m => !m.user.bot);
+      return { humans, voiceChannelId: session.channelId };
+    }
+  });
+}
+
+// --- /sb resume -------------------------------------------------------------
+
+export async function handleResume(interaction) {
+  const guild = interaction.guild;
+  const session = getSession(guild.id);
+  if (!session) {
+    return interaction.reply({
+      content: 'Nothing is playing right now.',
+      flags: MessageFlags.Ephemeral
+    });
+  }
+  if (!isPaused(guild.id)) {
+    return interaction.reply({
+      content: 'Playback is not paused.',
+      flags: MessageFlags.Ephemeral
+    });
+  }
+
+  const userId = interaction.user.id;
+  const admin = isAdmin(guild, userId);
+  const initiator = isInitiator(guild.id, userId);
+
+  if (admin || initiator) {
+    if (resumeSession(guild.id)) {
+      cancelVote('resume', guild.id);
+      logger.ok('resume instant', { guildId: guild.id, by: userId });
+      return interaction.reply({ content: '▶ Playback resumed.' });
+    }
+    return interaction.reply({
+      content: 'Could not resume playback.',
+      flags: MessageFlags.Ephemeral
+    });
+  }
+
+  const voiceChannel = guild.channels.cache.get(session.channelId);
+  if (!voiceChannel) {
+    return interaction.reply({
+      content: 'Voice channel no longer exists.',
+      flags: MessageFlags.Ephemeral
+    });
+  }
+  const humans = voiceChannel.members.filter(m => !m.user.bot);
+  if (!humans.has(userId)) {
+    return interaction.reply({
+      content: `You need to be in <#${voiceChannel.id}> to vote.`,
+      flags: MessageFlags.Ephemeral
+    });
+  }
+
+  await startVote({
+    kind: 'resume',
+    interaction,
+    voiceChannel,
+    initialMessage: `▶ <@${userId}> wants to resume the soundboard.`,
+    buttonLabel: 'Vote to Resume',
+    expiredMessage: '⌛ Resume vote expired.',
+    onPass: async () => {
+      resumeSession(guild.id);
+      logger.ok('resume by vote', { guildId: guild.id });
+    }
+  });
+}
+
+export async function handleResumeVoteButton(interaction) {
+  return handleVoteButton({
+    kind: 'resume',
+    interaction,
+    noLongerActiveMessage: 'Nothing is playing anymore.',
+    passedMessageBuilder: (votes, needed) =>
+      `▶ Playback resumed — vote passed (${votes}/${needed}).`,
+    voteResolver: async () => {
+      const session = getSession(interaction.guild.id);
+      if (!session) return null;
+      const voiceChannel = interaction.guild.channels.cache.get(session.channelId);
+      if (!voiceChannel) return null;
+      const humans = voiceChannel.members.filter(m => !m.user.bot);
+      return { humans, voiceChannelId: session.channelId };
+    }
+  });
+}

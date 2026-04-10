@@ -15,10 +15,16 @@ import { logger } from '../logger.js';
  * session = {
  *   connection, player, mixer, channelId,
  *   playing: Map<sourceId, { name, userId, startedAt }>,
- *   cleanupScheduled
+ *   cleanupScheduled,
+ *   pausedAt: number|null,
+ *   pausedBy: string|null,
+ *   pauseTimer: NodeJS.Timeout|null
  * }
  */
 const sessions = new Map();
+
+// Idle disconnect after this long while paused.
+const PAUSE_IDLE_MS = 2 * 60 * 1000;
 
 export function getSession(guildId) {
   return sessions.get(guildId);
@@ -102,7 +108,10 @@ async function createSession(guild, voiceChannel) {
     mixer,
     channelId: voiceChannel.id,
     playing: new Map(),
-    cleanupScheduled: false
+    cleanupScheduled: false,
+    pausedAt: null,
+    pausedBy: null,
+    pauseTimer: null
   };
   sessions.set(guild.id, session);
 
@@ -153,10 +162,92 @@ export function stopSession(guildId, reason = 'manual') {
   cleanupSession(guildId, reason);
 }
 
+/**
+ * Pause the session for this guild. Starts a 2-minute idle timer that
+ * disconnects the bot if no `resumeSession` arrives in time. Returns true
+ * if the pause took effect, false if there was nothing to pause or it was
+ * already paused.
+ */
+export function pauseSession(guildId, byUserId) {
+  const session = sessions.get(guildId);
+  if (!session) return false;
+  if (session.pausedAt) return false;
+
+  try {
+    session.player.pause();
+  } catch (err) {
+    logger.warn('player pause threw', { guildId, err: err.message });
+    return false;
+  }
+
+  session.pausedAt = Date.now();
+  session.pausedBy = byUserId || null;
+  session.pauseTimer = setTimeout(() => {
+    const current = sessions.get(guildId);
+    if (current === session && session.pausedAt) {
+      logger.info('paused session timed out — disconnecting', { guildId });
+      cleanupSession(guildId, 'pause-timeout');
+    }
+  }, PAUSE_IDLE_MS);
+
+  logger.ok('session paused', { guildId, by: byUserId });
+  return true;
+}
+
+/**
+ * Resume a paused session. Clears the idle timer. Returns true if it took
+ * effect, false if there was nothing paused.
+ */
+export function resumeSession(guildId) {
+  const session = sessions.get(guildId);
+  if (!session) return false;
+  if (!session.pausedAt) return false;
+
+  try {
+    session.player.unpause();
+  } catch (err) {
+    logger.warn('player unpause threw', { guildId, err: err.message });
+    return false;
+  }
+
+  if (session.pauseTimer) {
+    clearTimeout(session.pauseTimer);
+    session.pauseTimer = null;
+  }
+  session.pausedAt = null;
+  session.pausedBy = null;
+  logger.ok('session resumed', { guildId });
+  return true;
+}
+
+export function isPaused(guildId) {
+  const session = sessions.get(guildId);
+  return !!(session && session.pausedAt);
+}
+
+/**
+ * Returns true if userId triggered any sound currently in this session's
+ * playing map. Used by /sb pause and /sb resume to grant the initiator
+ * instant control without a vote.
+ */
+export function isInitiator(guildId, userId) {
+  const session = sessions.get(guildId);
+  if (!session) return false;
+  for (const entry of session.playing.values()) {
+    if (entry.userId === userId) return true;
+  }
+  return false;
+}
+
 function cleanupSession(guildId, reason) {
   const session = sessions.get(guildId);
   if (!session) return;
   sessions.delete(guildId);
+
+  if (session.pauseTimer) {
+    clearTimeout(session.pauseTimer);
+    session.pauseTimer = null;
+  }
 
   try { session.mixer.cleanup(); } catch (err) {
     logger.warn('mixer cleanup threw', { err: err.message });

@@ -3,26 +3,41 @@ import path from 'node:path';
 import { MessageFlags } from 'discord.js';
 import { config } from '../config.js';
 import { queries } from '../db/database.js';
-import { isAdmin } from '../admins.js';
+import { isAdmin, isOwner } from '../admins.js';
+import { canonicalize, displayName } from '../names.js';
 import { logger } from '../logger.js';
 
+// Delete permission layers:
+//   - bot owner            -> any sound, any guild
+//   - admin of source guild -> sounds whose guild_id matches the current guild
+//                              (the action must happen IN the source guild,
+//                              and "admin" follows that guild's admin_mode)
+//   - uploader              -> their own sounds
 export async function handleDelete(interaction) {
-  const name = interaction.options.getString('name');
-  const sound = queries.getByName.get(name);
+  const rawName = interaction.options.getString('name', true);
+  const sound = queries.getByMatch.get(canonicalize(rawName));
 
   if (!sound) {
     return interaction.reply({
-      content: `No sound named **${name}**.`,
+      content: `No sound named **${rawName}**.`,
       flags: MessageFlags.Ephemeral
     });
   }
 
-  const admin = isAdmin(interaction.user.id);
-  const isUploader = sound.uploader_id === interaction.user.id;
+  const actor = interaction.user.id;
+  const guild = interaction.guild;
+  const isUploader = sound.uploader_id === actor;
+  const owner = isOwner(actor);
+  // Admin of the source guild — only meaningful if the action is happening
+  // in that same guild (admin checks need a guild context).
+  const adminOfSource =
+    sound.guild_id === guild.id && isAdmin(guild, actor);
 
-  if (!admin && !isUploader) {
+  const allowed = owner || isUploader || adminOfSource;
+
+  if (!allowed) {
     return interaction.reply({
-      content: `You can only delete sounds you uploaded. **${sound.name}** was uploaded by <@${sound.uploader_id}>.`,
+      content: `You can only delete sounds you uploaded. **${displayName(sound.name)}** was uploaded by <@${sound.uploader_id}>.`,
       flags: MessageFlags.Ephemeral,
       allowedMentions: { users: [] }
     });
@@ -40,14 +55,18 @@ export async function handleDelete(interaction) {
 
     logger.ok('sound deleted', {
       name: sound.name,
-      byUser: interaction.user.id,
+      byUser: actor,
       uploader: sound.uploader_id,
-      asAdmin: admin && !isUploader
+      asOwner: owner,
+      asGuildAdmin: adminOfSource && !isUploader && !owner
     });
 
-    const label = admin && !isUploader ? ' (admin)' : '';
+    let label = '';
+    if (owner && !isUploader) label = ' (owner)';
+    else if (adminOfSource && !isUploader) label = ' (guild admin)';
+
     await interaction.reply({
-      content: `🗑 Deleted **${sound.name}**${label}.`,
+      content: `🗑 Deleted **${displayName(sound.name)}**${label}.`,
       flags: MessageFlags.Ephemeral
     });
   } catch (err) {

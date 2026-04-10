@@ -4,14 +4,15 @@ import { config } from './config.js';
 import { logger } from './logger.js';
 import { createBot } from './bot.js';
 import { commandData } from './commands/index.js';
+import { hydrateSettingsCache } from './settings.js';
 
 async function registerSlashCommands() {
   const rest = new REST({ version: '10' }).setToken(config.token);
   try {
     await rest.put(Routes.applicationCommands(config.clientId), {
-      body: [commandData]
+      body: commandData
     });
-    logger.ok('slash commands registered', { count: 1 });
+    logger.ok('slash commands registered', { count: commandData.length });
   } catch (err) {
     logger.error('failed to register slash commands', {
       err: err.message,
@@ -30,6 +31,9 @@ async function main() {
   // Log voice dependency report so we can spot missing sodium/opus fast
   const depReport = generateDependencyReport();
   logger.info('voice dependency report:\n' + depReport);
+
+  // Settings cache must be hydrated before any command runs.
+  hydrateSettingsCache();
 
   await registerSlashCommands();
 

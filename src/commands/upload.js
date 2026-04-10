@@ -2,19 +2,19 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { MessageFlags } from 'discord.js';
-import { config } from '../config.js';
 import { queries } from '../db/database.js';
 import { probeDuration, convertToOpus } from '../audio/converter.js';
 import {
   getTotalBytes,
-  getHardLimitBytes,
+  getEffectiveHardLimitBytes,
   checkStorageWarning,
   formatBytes
 } from '../storage.js';
 import { isAdmin } from '../admins.js';
+import { getSetting } from '../settings.js';
+import { storeName, displayName, canonicalize } from '../names.js';
 import { logger } from '../logger.js';
 
-const NAME_REGEX = /^[\w-]{1,32}$/;
 // Hardcoded absolute ceiling — applies even to admins.
 const ADMIN_HARD_CAP_MB = 200;
 const ADMIN_HARD_CAP_BYTES = ADMIN_HARD_CAP_MB * 1024 * 1024;
@@ -25,29 +25,39 @@ export async function handleUpload(interaction) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const attachment = interaction.options.getAttachment('file');
-  const admin = isAdmin(interaction.user.id);
+  const guild = interaction.guild;
+  const admin = isAdmin(guild, interaction.user.id);
 
   // --- Normalize & validate name -------------------------------------------
-  // Accept names with spaces, collapse runs of whitespace into a single underscore.
-  const rawName = interaction.options.getString('name').trim();
-  const name = rawName.replace(/\s+/g, '_');
+  // Accept anything reasonable; storeName turns it into kebab-case and
+  // rejects empty/over-long/illegal results.
+  const rawName = interaction.options.getString('name');
+  let name;
+  try {
+    name = storeName(rawName);
+  } catch (err) {
+    return interaction.editReply(err.message);
+  }
 
-  if (!NAME_REGEX.test(name)) {
+  // Uniqueness check goes through the loose canonical form.
+  if (queries.getByMatch.get(canonicalize(name))) {
     return interaction.editReply(
-      'Name must be 1-32 characters. Allowed: letters, numbers, underscores, hyphens, and spaces (spaces become underscores).'
+      `A sound named **${displayName(name)}** already exists. Pick a different name.`
     );
   }
 
-  if (queries.getByName.get(name)) {
-    return interaction.editReply(`A sound named **${name}** already exists. Pick a different name.`);
-  }
+  // --- Per-guild settings -------------------------------------------------
+  const maxSoundsPerUser = getSetting(guild.id, 'max_sounds_per_user');
+  const maxDurationSeconds = getSetting(guild.id, 'max_duration_seconds');
+  const maxFileSizeMB = getSetting(guild.id, 'max_file_size_mb');
+  const uploadScope = getSetting(guild.id, 'upload_scope');
 
   // --- Check user's personal upload cap (admins bypass) --------------------
   if (!admin) {
     const userCount = queries.countByUploader.get(interaction.user.id).count;
-    if (userCount >= config.maxSoundsPerUser) {
+    if (userCount >= maxSoundsPerUser) {
       return interaction.editReply(
-        `You've reached the max of **${config.maxSoundsPerUser}** uploaded sounds. ` +
+        `You've reached the max of **${maxSoundsPerUser}** uploaded sounds. ` +
           `Use \`/sb delete\` to remove some first.`
       );
     }
@@ -55,14 +65,16 @@ export async function handleUpload(interaction) {
 
   // --- Storage hard lock (applies to everyone, even admins) ----------------
   const totalBytes = getTotalBytes();
-  if (totalBytes >= getHardLimitBytes()) {
+  const hardLimitBytes = getEffectiveHardLimitBytes(guild.id);
+  if (totalBytes >= hardLimitBytes) {
     logger.warn('upload blocked — storage hard cap reached', {
       userId: interaction.user.id,
       total: totalBytes,
+      hardLimit: hardLimitBytes,
       asAdmin: admin
     });
     return interaction.editReply(
-      `🚫 Storage is full (**${formatBytes(totalBytes)}** / ${config.storageHardGB} GB hard limit). ` +
+      `🚫 Storage is full (**${formatBytes(totalBytes)}** / ${formatBytes(hardLimitBytes)} hard limit). ` +
         `Delete some sounds before uploading.`
     );
   }
@@ -110,10 +122,10 @@ export async function handleUpload(interaction) {
     }
 
     // Admins bypass the duration cap entirely (limited only by the 200MB file ceiling).
-    if (!admin && duration > config.maxDurationSeconds) {
+    if (!admin && duration > maxDurationSeconds) {
       safeUnlink(tempInput);
       return interaction.editReply(
-        `Sound is too long: **${duration.toFixed(1)}s**. Max is **${config.maxDurationSeconds}s**.`
+        `Sound is too long: **${duration.toFixed(1)}s**. Max is **${maxDurationSeconds}s**.`
       );
     }
 
@@ -137,28 +149,31 @@ export async function handleUpload(interaction) {
 
     // --- Post-conversion size check ----------------------------------------
     // Admins: capped at the hardcoded 200MB ceiling.
-    // Users: capped at config.maxFileSizeMB.
+    // Users: capped at the per-guild max_file_size_mb setting.
     const stats = fs.statSync(outPath);
-    const maxBytes = admin ? ADMIN_HARD_CAP_BYTES : config.maxFileSizeMB * 1024 * 1024;
+    const maxBytes = admin ? ADMIN_HARD_CAP_BYTES : maxFileSizeMB * 1024 * 1024;
     if (stats.size > maxBytes) {
       safeUnlink(outPath);
       return interaction.editReply(
         `Converted file is too large: **${formatBytes(stats.size)}**. Max for ${
-          admin ? `admins is ${ADMIN_HARD_CAP_MB} MB` : `users is ${config.maxFileSizeMB} MB`
+          admin ? `admins is ${ADMIN_HARD_CAP_MB} MB` : `users is ${maxFileSizeMB} MB`
         }.`
       );
     }
 
     // --- Persist to DB ------------------------------------------------------
+    const isPrivate = uploadScope === 'private' ? 1 : 0;
     queries.insert.run(
       name,
+      canonicalize(name),
       outFilename,
       interaction.user.id,
       interaction.user.tag,
-      interaction.guild.id,
+      guild.id,
       duration,
       stats.size,
-      Date.now()
+      Date.now(),
+      isPrivate
     );
 
     logger.ok('sound uploaded', {
@@ -166,17 +181,19 @@ export async function handleUpload(interaction) {
       userId: interaction.user.id,
       size: stats.size,
       duration,
-      asAdmin: admin
+      asAdmin: admin,
+      isPrivate
     });
 
-    const renamed = name !== rawName ? ` (stored as **${name}**)` : '';
+    const display = displayName(name);
+    const scopeLabel = isPrivate ? ' *(private to this server)*' : '';
     await interaction.editReply(
-      `✅ Uploaded **${name}**${renamed} — ${duration.toFixed(1)}s, ${formatBytes(stats.size)}.\n` +
-        `Play it with \`/sb play name:${name}\`.`
+      `✅ Uploaded **${display}**${scopeLabel} — ${duration.toFixed(1)}s, ${formatBytes(stats.size)}.\n` +
+        `Play it with \`/sb play name:${display}\`.`
     );
 
     // --- Storage warning check (fire and forget) ---------------------------
-    checkStorageWarning(interaction.client).catch(err =>
+    checkStorageWarning(interaction.client, guild.id).catch(err =>
       logger.error('storage warning check failed', { err: err.message })
     );
   } catch (err) {

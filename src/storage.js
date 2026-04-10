@@ -1,6 +1,7 @@
 import { config } from './config.js';
 import { queries } from './db/database.js';
 import { getAllAdminIds } from './admins.js';
+import { getSetting, isOverridden, STORAGE_ABSOLUTE_CEILING_GB } from './settings.js';
 import { logger } from './logger.js';
 
 const BYTES_PER_GB = 1024 ** 3;
@@ -11,16 +12,44 @@ export function getTotalBytes() {
   return queries.totalSize.get().total;
 }
 
+// --- Effective per-guild caps ---------------------------------------------
+// If a guild has set storage_*_gb_override, that value FULLY REPLACES the
+// env value for uploads from that guild (clamped to STORAGE_ABSOLUTE_CEILING_GB
+// at set-time by the settings layer). Without a guildId, falls back to env.
+
+export function getEffectiveHardLimitGB(guildId) {
+  if (guildId && isOverridden(guildId, 'storage_hard_gb_override')) {
+    return Math.min(getSetting(guildId, 'storage_hard_gb_override'), STORAGE_ABSOLUTE_CEILING_GB);
+  }
+  return Math.min(config.storageHardGB, STORAGE_ABSOLUTE_CEILING_GB);
+}
+
+export function getEffectiveWarnLimitGB(guildId) {
+  if (guildId && isOverridden(guildId, 'storage_warn_gb_override')) {
+    return Math.min(getSetting(guildId, 'storage_warn_gb_override'), STORAGE_ABSOLUTE_CEILING_GB);
+  }
+  return Math.min(config.storageWarnGB, STORAGE_ABSOLUTE_CEILING_GB);
+}
+
+export function getEffectiveHardLimitBytes(guildId) {
+  return getEffectiveHardLimitGB(guildId) * BYTES_PER_GB;
+}
+
+export function getEffectiveWarnLimitBytes(guildId) {
+  return getEffectiveWarnLimitGB(guildId) * BYTES_PER_GB;
+}
+
+// Bot-wide defaults (used by /sb storage when no guild context applies).
 export function getHardLimitBytes() {
-  return config.storageHardGB * BYTES_PER_GB;
+  return Math.min(config.storageHardGB, STORAGE_ABSOLUTE_CEILING_GB) * BYTES_PER_GB;
 }
 
 export function getWarnLimitBytes() {
-  return config.storageWarnGB * BYTES_PER_GB;
+  return Math.min(config.storageWarnGB, STORAGE_ABSOLUTE_CEILING_GB) * BYTES_PER_GB;
 }
 
-export function isAtHardLimit(additionalBytes = 0) {
-  return getTotalBytes() + additionalBytes >= getHardLimitBytes();
+export function isAtHardLimit(additionalBytes = 0, guildId = null) {
+  return getTotalBytes() + additionalBytes >= getEffectiveHardLimitBytes(guildId);
 }
 
 export function formatBytes(bytes) {
@@ -35,14 +64,14 @@ export function formatBytes(bytes) {
 let warningDmSent = false;
 
 /**
- * Called after every successful upload. If total size just crossed the warn
- * threshold, DM every bot admin (owner + users in the `admins` table).
+ * Called after every successful upload. If total size just crossed the
+ * effective warn threshold for the uploading guild, DM every admin id.
  * Idempotent — will not re-send until storage drops back below the threshold
  * and rises again.
  */
-export async function checkStorageWarning(client) {
+export async function checkStorageWarning(client, guildId = null) {
   const total = getTotalBytes();
-  const warnBytes = getWarnLimitBytes();
+  const warnBytes = getEffectiveWarnLimitBytes(guildId);
 
   if (total < warnBytes) {
     if (warningDmSent) {

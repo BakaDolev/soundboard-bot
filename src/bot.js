@@ -1,6 +1,8 @@
 import { Client, Events, GatewayIntentBits, MessageFlags } from 'discord.js';
 import { logger } from './logger.js';
 import { queries } from './db/database.js';
+import { getSetting } from './settings.js';
+import { canonicalize, displayName } from './names.js';
 import { handleUpload } from './commands/upload.js';
 import { handlePlay } from './commands/play.js';
 import { handleDelete } from './commands/delete.js';
@@ -12,6 +14,22 @@ import {
   handleAdminRemove,
   handleAdminList
 } from './commands/admin.js';
+import {
+  handleSettingsView,
+  handleSettingsSet,
+  handleSettingsUnset
+} from './commands/settings.js';
+import { handleEdit } from './commands/edit.js';
+import { handleCut } from './commands/cut.js';
+import {
+  handlePause,
+  handleResume,
+  handlePauseVoteButton,
+  handleResumeVoteButton
+} from './commands/pause.js';
+
+// Both /sb and /soundboard route to the same handlers.
+const COMMAND_NAMES = new Set(['sb', 'soundboard']);
 
 export function createBot() {
   const client = new Client({
@@ -28,8 +46,8 @@ export function createBot() {
   client.on(Events.InteractionCreate, async interaction => {
     try {
       // --- Slash command dispatch ------------------------------------------
-      if (interaction.isChatInputCommand() && interaction.commandName === 'sb') {
-        // All /sb subcommands require a guild (voice)
+      if (interaction.isChatInputCommand() && COMMAND_NAMES.has(interaction.commandName)) {
+        // All soundboard commands require a guild (voice)
         if (!interaction.inGuild()) {
           return interaction.reply({
             content: 'Soundboard commands only work in a server.',
@@ -56,17 +74,41 @@ export function createBot() {
           }
         }
 
+        if (group === 'settings') {
+          switch (sub) {
+            case 'view':
+              return handleSettingsView(interaction);
+            case 'set':
+              return handleSettingsSet(interaction);
+            case 'unset':
+              return handleSettingsUnset(interaction);
+            default:
+              return interaction.reply({
+                content: `Unknown settings subcommand: ${sub}`,
+                flags: MessageFlags.Ephemeral
+              });
+          }
+        }
+
         switch (sub) {
           case 'upload':
             return handleUpload(interaction);
           case 'play':
             return handlePlay(interaction);
+          case 'edit':
+            return handleEdit(interaction);
+          case 'cut':
+            return handleCut(interaction);
           case 'delete':
             return handleDelete(interaction);
           case 'list':
             return handleList(interaction);
           case 'stop':
             return handleStop(interaction);
+          case 'pause':
+            return handlePause(interaction);
+          case 'resume':
+            return handleResume(interaction);
           case 'storage':
             return handleStorage(interaction);
           default:
@@ -77,22 +119,44 @@ export function createBot() {
         }
       }
 
-      // --- Autocomplete for play/delete name option ------------------------
-      if (interaction.isAutocomplete() && interaction.commandName === 'sb') {
+      // --- Autocomplete for sound name option ------------------------------
+      if (interaction.isAutocomplete() && COMMAND_NAMES.has(interaction.commandName)) {
         const focused = interaction.options.getFocused(true);
         if (focused.name !== 'name') {
           return interaction.respond([]);
         }
         const query = focused.value || '';
-        const pattern = `%${query.replace(/[%_]/g, '')}%`;
-        const rows = queries.searchByName.all(pattern);
-        const choices = rows.slice(0, 25).map(s => ({ name: s.name, value: s.name }));
+        // Canonicalize the query so spaces, hyphens, underscores all match.
+        // Strip SQL LIKE wildcards from the canonical form.
+        const canonical = canonicalize(query).replace(/[%_]/g, '');
+        const pattern = `%${canonical}%`;
+
+        const viewScope = getSetting(interaction.guild.id, 'view_scope');
+        const rows =
+          viewScope === 'guild'
+            ? queries.searchForGuild.all(interaction.guild.id, pattern)
+            : queries.searchGlobal.all(pattern);
+
+        // Display the user-friendly form, but use the stored kebab-case as
+        // the autocomplete value so handlers see a canonical input.
+        const choices = rows.slice(0, 25).map(s => ({
+          name: displayName(s.name),
+          value: s.name
+        }));
         return interaction.respond(choices);
       }
 
-      // --- Stop vote button -------------------------------------------------
-      if (interaction.isButton() && interaction.customId.startsWith('stop-vote-')) {
-        return handleStopVoteButton(interaction);
+      // --- Vote buttons -----------------------------------------------------
+      if (interaction.isButton()) {
+        if (interaction.customId.startsWith('stop-vote-')) {
+          return handleStopVoteButton(interaction);
+        }
+        if (interaction.customId.startsWith('pause-vote-')) {
+          return handlePauseVoteButton(interaction);
+        }
+        if (interaction.customId.startsWith('resume-vote-')) {
+          return handleResumeVoteButton(interaction);
+        }
       }
     } catch (err) {
       logger.error('interaction handler threw', {

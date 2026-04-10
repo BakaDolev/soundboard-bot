@@ -1,20 +1,34 @@
 import { EmbedBuilder, MessageFlags } from 'discord.js';
 import { queries } from '../db/database.js';
+import { getSetting } from '../settings.js';
+import { displayName } from '../names.js';
 
 const EMBED_DESC_LIMIT = 4000;
 
 export async function handleList(interaction) {
-  const sounds = queries.getAll.all();
+  const guild = interaction.guild;
+  const viewScope = getSetting(guild.id, 'view_scope');
+
+  // global → all public sounds (is_private = 0)
+  // guild  → every sound uploaded from this guild (regardless of private flag)
+  const sounds =
+    viewScope === 'guild'
+      ? queries.getAllForGuild.all(guild.id)
+      : queries.getAllGlobal.all();
 
   if (sounds.length === 0) {
+    const hint =
+      viewScope === 'guild'
+        ? "This server hasn't uploaded any sounds yet. Use `/sb upload` to add one."
+        : 'No sounds uploaded yet. Use `/sb upload` to add one.';
     return interaction.reply({
-      content: 'No sounds uploaded yet. Use `/sb upload` to add one.',
+      content: hint,
       flags: MessageFlags.Ephemeral
     });
   }
 
   const lines = sounds.map(
-    s => `• **${s.name}** (${s.duration_seconds.toFixed(1)}s) — <@${s.uploader_id}>`
+    s => `• **${displayName(s.name)}** (${s.duration_seconds.toFixed(1)}s) — <@${s.uploader_id}>`
   );
 
   let description = lines.join('\n');
@@ -32,8 +46,11 @@ export async function handleList(interaction) {
     truncated = true;
   }
 
+  const scopeLabel = viewScope === 'guild' ? ` — ${guild.name}` : '';
   const embed = new EmbedBuilder()
-    .setTitle(`🔊 Soundboard — ${sounds.length} sound${sounds.length === 1 ? '' : 's'}`)
+    .setTitle(
+      `🔊 Soundboard${scopeLabel} — ${sounds.length} sound${sounds.length === 1 ? '' : 's'}`
+    )
     .setDescription(description)
     .setColor(0x5865f2);
 
@@ -41,5 +58,5 @@ export async function handleList(interaction) {
     embed.setFooter({ text: 'Some sounds omitted — refine with autocomplete when playing.' });
   }
 
-  await interaction.reply({ embeds: [embed] , flags: MessageFlags.Ephemeral});
+  await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
 }

@@ -49,49 +49,56 @@ Discord only allows one audio stream per voice connection. To play multiple soun
 
 ## File Limits
 
-| Limit | Value | Env var |
-|---|---|---|
-| Max duration | 120s (2 min) hard cap | `MAX_DURATION_SECONDS` |
-| Max file size (post-conversion) | 10MB | `MAX_FILE_SIZE_MB` |
-| Max uploads per user | 20 | `MAX_SOUNDS_PER_USER` |
-| Storage soft cap (warn) | 1GB → DM admins | `STORAGE_WARN_GB` |
-| Storage hard cap (block) | 5GB → refuse uploads | `STORAGE_HARD_GB` |
+Env values are defaults; most are overridable per server via `/sb settings`. Storage caps are clamped to an absolute ceiling of 10 GB.
+
+| Limit | Default | Env var | Per-server override |
+|---|---|---|---|
+| Max duration | 120s | `MAX_DURATION_SECONDS` | `max_duration_seconds` |
+| Max file size (post-conversion) | 10MB | `MAX_FILE_SIZE_MB` | `max_file_size_mb` |
+| Max uploads per user | 20 | `MAX_SOUNDS_PER_USER` | `max_sounds_per_user` |
+| Storage soft cap (warn) | 1GB → DM admins | `STORAGE_WARN_GB` | `storage_warn_gb_override` (owner only) |
+| Storage hard cap (block) | 5GB → refuse uploads | `STORAGE_HARD_GB` | `storage_hard_gb_override` (owner only) |
 
 ---
 
 ## Commands
 
+Every command is registered under both `/sb` and `/soundboard`.
+
 | Command | Description |
 |---|---|
-| `/sb upload file:<attachment> name:<text>` | Upload an audio/video file, stored as `name`. Case-insensitive, globally unique. |
-| `/sb play name:<text>` | Play a sound. Overlaps current playback if same channel. Blocked cross-channel for non-admins. |
-| `/sb delete name:<text>` | Delete a sound. Uploaders can delete own sounds; admins can delete any. |
-| `/sb list` | List all sounds (name, duration, uploader). |
-| `/sb stop` | Admins: stop immediately. Users: start a 20%-vote button with 30s window. |
-| `/sb storage` | Show used/total GB, sound count, warn threshold. |
-| `/sb admin add user:<@user>` | Promote a user to bot admin (admin-only). |
-| `/sb admin remove user:<@user>` | Demote a bot admin. The owner cannot be removed. |
-| `/sb admin list` | Show current bot admins (owner + DB entries). |
+| `/sb upload file:<attachment> name:<text>` | Upload audio/video. Names accept spaces/hyphens/underscores; stored kebab-case, displayed with spaces. Tag (global vs private) follows the server's `upload_scope`. |
+| `/sb play name:<text>` | Play a sound. Overlaps current playback if same channel. Blocked cross-channel for non-admins. Visibility honours `view_scope`. |
+| `/sb edit name:<text> new_name:<text>` | Rename a sound. Uploader or owner only. |
+| `/sb cut name:<text> start:<text> end:<text>` | Trim a sound in place. Uploader or owner only. Times accept `MM:SS`, `HH:MM:SS`, or seconds. |
+| `/sb delete name:<text>` 🔒 | Uploader, admin of the source server, or owner. |
+| `/sb list` | List sounds. Filtered by `view_scope`: `global` shows all public; `guild` shows only this server's uploads. |
+| `/sb stop` 🔒 | Admins: stop immediately. Users: start a 20%-vote button with 30s window. |
+| `/sb pause` / `/sb resume` | Initiator + admins instant; other VC members can vote. Bot disconnects 2 minutes after a pause if not resumed. |
+| `/sb storage` | Show used/total GB, sound count, warn threshold (with override marks). |
+| `/sb admin add\|remove\|list user:<@user>` 🔒 | Manage **per-server** bot admin list. Owner is implicit admin everywhere. |
+| `/sb settings view\|set\|unset key:<choice> [value:<text>]` 🔒 | Per-server runtime settings. Some keys are owner-only. |
 
-Autocomplete is enabled on the `name` option for `/sb play` and `/sb delete`.
+Autocomplete is enabled on the `name` option for every command that takes one. Lookups use a canonical match form so users can type the name with any combination of spaces, hyphens, and underscores.
 
 ---
 
 ## Admin System
 
-Admin checks are **independent of Discord guild permissions**. The bot maintains its own admin list:
+Admins are **per-server**. The bot has two independent layers and a per-server toggle that picks which one applies.
 
-1. **Bot owner** — `OWNER_ID` from `.env`. Always admin, can never be removed.
-2. **DB admins** — users added via `/sb admin add`, stored in the `admins` table.
+1. **Bot owner** — `OWNER_ID` from `.env`. Always admin in every server. Can never be removed. Only role allowed to change `admin_mode` and `storage_*_gb_override` settings.
+2. **Bot admins (per server)** — users added via `/sb admin add` *in that server*, stored in `bot_admins (guild_id, user_id, …)`. Used when a server's `admin_mode` setting is `bot` (the default).
+3. **Server admins** — users with Discord's `ADMINISTRATOR` permission in that server. Used when `admin_mode` is `server`.
 
-Every admin-gated code path uses `isAdmin(userId)` from `src/admins.js`, which checks the env var first and falls back to a SQLite lookup. No guild-permission checks anywhere in the codebase.
+`isAdmin(guild, userId)` in `src/admins.js` is the single dispatcher: it returns `true` for the owner, then reads the guild's `admin_mode` setting and consults either `isBotAdmin` or `isServerAdmin`.
 
-Admin powers:
-- Stop playback instantly (`/sb stop`)
+Admin powers (within a server):
+- Stop / pause / resume playback instantly
 - Override the channel lock when using `/sb play` from a different VC
-- Delete any sound regardless of uploader
-- Add/remove other admins
-- Receive storage warning DMs (at 1GB soft cap)
+- Delete any sound uploaded *from that server* (the owner can delete from anywhere)
+- Add/remove other bot admins for that server
+- Receive storage warning DMs (at the effective warn cap)
 
 ---
 
@@ -212,7 +219,20 @@ Admins are also global — the bot is designed for a single deployment where adm
 - Dropped the privileged `GuildMembers` intent — no longer needed after the admin refactor, simpler bot setup.
 - Added `.github/workflows/docker.yml` to auto-build and push to ghcr.io on every push to `main`.
 - Added `docker-compose.prod.yml` for pulling pre-built images on Unraid.
+
+### 2026-04-10 — Per-guild rework + edit/cut/pause
+- Per-guild settings layer (`guild_settings` table + `src/settings.js`) with env values as defaults. Settable keys: `max_file_size_mb`, `max_duration_seconds`, `max_sounds_per_user`, `upload_scope`, `view_scope`, `admin_mode`, `storage_warn_gb_override`, `storage_hard_gb_override`. The two storage overrides and `admin_mode` are owner-only.
+- Admin model is now fully per-guild. Old global `admins` table is left behind (read-only) and superseded by `bot_admins (guild_id, user_id, …)`. New `isAdmin(guild, userId)` dispatches on the guild's `admin_mode` between bot-admin list and Discord `ADMINISTRATOR` perm. Owner is implicit admin everywhere and the only role that can change `admin_mode` / storage overrides.
+- Two independent visibility settings: `upload_scope` (`global`/`private`) tags new uploads; `view_scope` (`global`/`guild`) controls what `/sb list`, autocomplete, and `/sb play` see. Sounds keep the tag they were uploaded with.
+- Storage cap override: when set on a guild it **fully replaces** the env hard/warn cap for that guild's uploads. Both env and overrides are clamped to an absolute 10 GB ceiling (`STORAGE_ABSOLUTE_CEILING_GB`). Float decimals supported (`0.5`, `1.25`, etc.).
+- New commands: `/sb edit` (rename, uploader/owner only), `/sb cut` (in-place ffmpeg trim, uploader/owner only), `/sb pause` and `/sb resume` (initiator + admins instant, others vote — 20% / 30s, mirrors `/sb stop`). Pause idle timer disconnects after 2 minutes if not resumed.
+- Vote logic extracted to `src/voteHelper.js`, reused by `/sb stop`, `/sb pause`, `/sb resume` with kind-prefixed customIds.
+- Name handling normalized via new `src/names.js`: `storeName` (input → kebab-case, strict charset), `displayName` (kebab/underscore → spaces), `canonicalize`/`matchName` (loose lookup form). New `match_name` column on `sounds` (UNIQUE) backfilled on migration; lookups use it everywhere so users can type names with any combination of spaces, hyphens, or underscores.
+- Delete permissions are now layered: owner → any sound; uploader → own; admin of source guild → only sounds uploaded from that guild **and only while acting in that guild**.
+- `/sb` and `/soundboard` are registered as twin command trees from a single builder factory. Admin-only subcommands carry a 🔒 marker in their description (Discord can't hide individual subcommands by permission).
+- Audio trim helper at `src/audio/trim.js` uses `ffmpeg -ss <start> -to <end> -i <in> -c:a libopus -b:a 128k -ar 48000 -ac 2 -f ogg`, atomically replaces the original on success, re-probes duration, and updates the DB row.
 - Open questions for next session:
   - Verify mixer timing on real Discord voice (local testing).
   - Consider rate limiting on `/sb play` to prevent spam-overlap abuse.
   - Consider pagination buttons on `/sb list` if sound count grows beyond ~50.
+  - Drop the legacy `admins` table once it's been verified that no deployment still depends on it.

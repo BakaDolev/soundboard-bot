@@ -6,34 +6,64 @@ Runs as a Docker container on Unraid (or anywhere Docker runs).
 
 ---
 
+> Every command below is also available under `/soundboard` as an alias of `/sb`.
+
 ## Features
 
-- `/sb upload` — attach any audio/video file, the bot auto-converts to Opus OGG (128kbps, 48kHz stereo)
+- `/sb upload` — attach any audio/video file, the bot auto-converts to Opus OGG (128kbps, 48kHz stereo). Names accept spaces, hyphens, or underscores; the bot stores them in kebab-case and displays them with spaces.
 - `/sb play` — plays a sound; multiple sounds overlap in a live mix
-- `/sb delete` — users delete their own sounds, bot admins can delete any
-- `/sb list` — list all sounds with uploader and duration
-- `/sb stop` — admins stop instantly; users start a vote (20% of VC members, 30s)
-- `/sb storage` — storage usage bar, largest sounds, limits
-- `/sb admin add @user`, `/sb admin remove @user`, `/sb admin list` — manage bot admins
-- Autocomplete on sound names for `/sb play` and `/sb delete`
+- `/sb edit name new_name` — uploader (or owner) renames a sound
+- `/sb cut name start end` — uploader (or owner) trims a sound in place. Times accept `MM:SS`, `HH:MM:SS`, or plain seconds.
+- `/sb delete` 🔒 — uploader, admin of the source server, or owner can delete
+- `/sb list` — list available sounds (filtered by the per-server `view_scope` setting)
+- `/sb stop` 🔒 — admins stop instantly; users start a vote (20% of VC members, 30s)
+- `/sb pause` / `/sb resume` — initiator and admins pause/resume instantly; other VC members can vote. Bot disconnects 2 minutes after a pause if not resumed.
+- `/sb storage` — storage usage bar, largest sounds, effective per-server limits
+- `/sb admin add @user`, `/sb admin remove @user`, `/sb admin list` 🔒 — manage **per-server** bot admins
+- `/sb settings view|set|unset` 🔒 — configure per-server limits and toggles
+- Autocomplete on every sound-name option, with loose matching across spaces/hyphens/underscores
 - Channel lock: non-admins can't move the bot while it's playing in another channel
 - Admin priority: admin `/sb play` overrides the channel lock
 - Auto-disconnect after the last sound finishes
-- Storage soft cap (1GB) DMs all bot admins
-- Storage hard cap (5GB) blocks new uploads
+- Storage soft cap (default 1 GB) DMs all bot admins
+- Storage hard cap (default 5 GB, max 10 GB) blocks new uploads
 
 ## Admin System
 
-The bot has its own admin list — **independent of Discord's guild permissions**. A user is a bot admin if:
-1. Their Discord user ID matches `OWNER_ID` in `.env` (the bot owner — always admin, can't be removed), **or**
-2. They've been added via `/sb admin add @user` (stored in the bot's SQLite database).
+Admins are scoped **per-server** and independent of Discord's guild permissions by default.
+
+A user is a bot admin in a server if:
+1. Their Discord user ID matches `OWNER_ID` in `.env` (the bot owner — always admin in every server, can't be removed), **or**
+2. They've been added via `/sb admin add @user` *in that server* (stored in `bot_admins`).
+
+Each server can switch its admin model with `/sb settings set admin_mode <bot|server>` (owner only):
+- `bot` (default) — uses the per-server bot admin list described above
+- `server` — anyone with Discord's `ADMINISTRATOR` permission in that server is treated as an admin
 
 Admins can:
-- Add/remove other admins (except the owner, who is permanent)
+- Add/remove other admins in their server (except the owner, who is permanent)
 - Stop playback instantly with `/sb stop`
+- Pause/resume playback instantly
 - Override the channel lock when running `/sb play` from a different voice channel
-- Delete any sound (not just their own)
+- Delete any sound uploaded from their server (the owner can delete any sound from anywhere)
 - Receive storage warning DMs
+
+## Per-Server Settings
+
+`/sb settings set key:<key> value:<value>` lets bot admins tune the bot's behaviour per server. `/sb settings unset key:<key>` clears the override and falls back to the env default. `/sb settings view` shows the current values.
+
+| Key | Default | Owner only? |
+|---|---|---|
+| `max_file_size_mb` | `MAX_FILE_SIZE_MB` env (10) | no |
+| `max_duration_seconds` | `MAX_DURATION_SECONDS` env (120) | no |
+| `max_sounds_per_user` | `MAX_SOUNDS_PER_USER` env (20) | no |
+| `upload_scope` (`global`/`private`) | `global` | no |
+| `view_scope` (`global`/`guild`) | `global` | no |
+| `admin_mode` (`bot`/`server`) | `bot` | **yes** |
+| `storage_warn_gb_override` | `STORAGE_WARN_GB` env (1) | **yes** |
+| `storage_hard_gb_override` | `STORAGE_HARD_GB` env (5), max 10 | **yes** |
+
+`upload_scope` controls how new uploads from the server are tagged. `view_scope` controls what `/sb list`, autocomplete, and `/sb play` show in that server: `global` shows all public sounds; `guild` shows only sounds uploaded in that server (regardless of how they were tagged at upload time). Sounds keep their original tag when settings change.
 
 ---
 
@@ -137,23 +167,27 @@ Non-admins use `/sb stop` to start a vote. Needed votes = `ceil(humans_in_vc * 0
 
 ### Storage warnings
 
-After every successful upload, total size is checked:
-- **≥ 1 GB (soft):** DMs the bot owner + every member with the `ADMINISTRATOR` permission in the guild where the upload happened. A flag prevents re-sending until the total drops back below the threshold.
-- **≥ 5 GB (hard):** `/sb upload` is rejected. Existing sounds still play. An admin must delete sounds to free space.
+After every successful upload, total size is checked against the **effective** caps for the uploading server (per-server override if set, otherwise the env values):
+- **≥ warn cap (default 1 GB):** DMs the bot owner + every per-server bot admin recorded in `bot_admins`. A flag prevents re-sending until the total drops back below the threshold.
+- **≥ hard cap (default 5 GB):** `/sb upload` is rejected. Existing sounds still play. An admin must delete sounds to free space.
 
-Both thresholds are configurable via `STORAGE_WARN_GB` / `STORAGE_HARD_GB`.
+Defaults are configurable via `STORAGE_WARN_GB` / `STORAGE_HARD_GB`. The owner can override either value per server with `/sb settings set storage_warn_gb_override` / `storage_hard_gb_override`. Both env defaults and overrides are clamped to an absolute ceiling of **10 GB**.
 
 ---
 
 ## File Limits
 
-| Limit | Default | Env var |
-|---|---|---|
-| Max duration per sound | 120s | `MAX_DURATION_SECONDS` |
-| Max file size (post-conversion) | 10 MB | `MAX_FILE_SIZE_MB` |
-| Max sounds per user | 20 | `MAX_SOUNDS_PER_USER` |
-| Storage warning threshold | 1 GB | `STORAGE_WARN_GB` |
-| Storage hard cap | 5 GB | `STORAGE_HARD_GB` |
+These env vars are the **defaults** for every server. Each server's bot admins can override most of them at runtime via `/sb settings`.
+
+| Limit | Default | Env var | Per-server override key |
+|---|---|---|---|
+| Max duration per sound | 120s | `MAX_DURATION_SECONDS` | `max_duration_seconds` |
+| Max file size (post-conversion) | 10 MB | `MAX_FILE_SIZE_MB` | `max_file_size_mb` |
+| Max sounds per user | 20 | `MAX_SOUNDS_PER_USER` | `max_sounds_per_user` |
+| Storage warning threshold | 1 GB | `STORAGE_WARN_GB` | `storage_warn_gb_override` (owner only) |
+| Storage hard cap | 5 GB (max 10 GB) | `STORAGE_HARD_GB` | `storage_hard_gb_override` (owner only) |
+
+Float env vars (`STORAGE_WARN_GB`, `STORAGE_HARD_GB`) accept decimals — set them to e.g. `0.5`, `1.25`, `7.5`. The override values do too. Both env values and per-server overrides are clamped to an absolute 10 GB ceiling.
 
 ---
 

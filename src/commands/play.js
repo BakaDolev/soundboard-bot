@@ -5,15 +5,32 @@ import { config } from '../config.js';
 import { queries } from '../db/database.js';
 import { getSession, playSound, stopSession } from '../audio/player.js';
 import { isAdmin } from '../admins.js';
+import { getSetting } from '../settings.js';
+import { canonicalize, displayName } from '../names.js';
 import { logger } from '../logger.js';
 
 export async function handlePlay(interaction) {
-  const name = interaction.options.getString('name');
-  const sound = queries.getByName.get(name);
+  const rawName = interaction.options.getString('name');
+  const sound = queries.getByMatch.get(canonicalize(rawName));
 
   if (!sound) {
     return interaction.reply({
-      content: `No sound named **${name}**. Use \`/sb list\` to see available sounds.`,
+      content: `No sound named **${rawName}**. Use \`/sb list\` to see available sounds.`,
+      flags: MessageFlags.Ephemeral
+    });
+  }
+
+  // --- Visibility check ----------------------------------------------------
+  // view_scope=guild → can only play sounds uploaded in this guild.
+  // view_scope=global → can only play public sounds (is_private = 0).
+  const viewScope = getSetting(interaction.guild.id, 'view_scope');
+  const visible =
+    viewScope === 'guild'
+      ? sound.guild_id === interaction.guild.id
+      : sound.is_private === 0;
+  if (!visible) {
+    return interaction.reply({
+      content: `**${displayName(sound.name)}** isn't available in this server.`,
       flags: MessageFlags.Ephemeral
     });
   }
@@ -38,7 +55,7 @@ export async function handlePlay(interaction) {
     });
   }
 
-  const admin = isAdmin(member.id);
+  const admin = isAdmin(interaction.guild, member.id);
   const session = getSession(interaction.guild.id);
 
   // --- Channel lock rules ---------------------------------------------------
@@ -88,9 +105,10 @@ export async function handlePlay(interaction) {
       member.id
     );
 
+    const display = displayName(sound.name);
     const suffix = result.overlapping > 1 ? ` (${result.overlapping} sounds overlapping)` : '';
     await interaction.editReply({
-      content: `▶ Playing **${sound.name}**${suffix}`,
+      content: `▶ Playing **${display}**${suffix}`,
       flags: MessageFlags.Ephemeral
     });
   } catch (err) {
@@ -100,7 +118,7 @@ export async function handlePlay(interaction) {
       err: err.message
     });
     await interaction.editReply({
-      content: `Failed to play **${sound.name}**: ${err.message}`,
+      content: `Failed to play **${displayName(sound.name)}**: ${err.message}`,
       flags: MessageFlags.Ephemeral
     });
   }
