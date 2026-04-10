@@ -41,5 +41,5 @@ export async function handleList(interaction) {
     embed.setFooter({ text: 'Some sounds omitted — refine with autocomplete when playing.' });
   }
 
-  await interaction.reply({ embeds: [embed] });
+  await interaction.reply({ embeds: [embed] , flags: MessageFlags.Ephemeral});
 }

@@ -90,7 +90,8 @@ export async function handlePlay(interaction) {
 
     const suffix = result.overlapping > 1 ? ` (${result.overlapping} sounds overlapping)` : '';
     await interaction.editReply({
-      content: `▶ Playing **${sound.name}**${suffix}`
+      content: `▶ Playing **${sound.name}**${suffix}`,
+      flags: MessageFlags.Ephemeral
     });
   } catch (err) {
     logger.error('play failed', {
@@ -99,7 +100,8 @@ export async function handlePlay(interaction) {
       err: err.message
     });
     await interaction.editReply({
-      content: `Failed to play **${sound.name}**: ${err.message}`
+      content: `Failed to play **${sound.name}**: ${err.message}`,
+      flags: MessageFlags.Ephemeral
     });
   }
 }

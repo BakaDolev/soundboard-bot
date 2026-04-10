@@ -38,6 +38,7 @@ export async function handleAdminAdd(interaction) {
 
   await interaction.reply({
     content: `✅ Added <@${target.id}> as a bot admin.`,
+    flags: MessageFlags.Ephemeral,
     allowedMentions: { users: [] }
   });
 }
@@ -71,6 +72,7 @@ export async function handleAdminRemove(interaction) {
 
   await interaction.reply({
     content: `🗑 Removed <@${target.id}> as a bot admin.`,
+    flags: MessageFlags.Ephemeral,
     allowedMentions: { users: [] }
   });
 }
@@ -86,6 +88,7 @@ export async function handleAdminList(interaction) {
 
   await interaction.reply({
     content: `**Bot Admins (${lines.length})**\n${lines.join('\n')}`,
+    flags: MessageFlags.Ephemeral,
     allowedMentions: { users: [] }
   });
 }
