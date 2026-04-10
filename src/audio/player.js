@@ -1,0 +1,172 @@
+import {
+  joinVoiceChannel,
+  createAudioPlayer,
+  createAudioResource,
+  StreamType,
+  VoiceConnectionStatus,
+  entersState,
+  NoSubscriberBehavior
+} from '@discordjs/voice';
+import { Mixer } from './mixer.js';
+import { logger } from '../logger.js';
+
+/**
+ * guildId -> session
+ * session = {
+ *   connection, player, mixer, channelId,
+ *   playing: Map<sourceId, { name, userId, startedAt }>,
+ *   cleanupScheduled
+ * }
+ */
+const sessions = new Map();
+
+export function getSession(guildId) {
+  return sessions.get(guildId);
+}
+
+/**
+ * Play a sound in the given voice channel. Creates a session if none exists.
+ * If a session exists in a different channel, the caller is expected to have
+ * already validated that (either same channel, or admin override). Admin
+ * override should call stopSession(guildId) first, then call playSound again.
+ */
+export async function playSound(guild, voiceChannel, soundFilePath, soundName, userId) {
+  let session = sessions.get(guild.id);
+
+  if (!session) {
+    session = await createSession(guild, voiceChannel);
+  }
+
+  return new Promise((resolve, reject) => {
+    const sourceId = session.mixer.addSource(soundFilePath, () => {
+      session.playing.delete(sourceId);
+      logger.ok('sound finished', { guildId: guild.id, sound: soundName, userId });
+    });
+
+    if (sourceId === null) {
+      return reject(new Error('Mixer is destroyed'));
+    }
+
+    session.playing.set(sourceId, {
+      name: soundName,
+      userId,
+      startedAt: Date.now()
+    });
+
+    logger.ok('sound playing', {
+      guildId: guild.id,
+      sound: soundName,
+      userId,
+      overlapping: session.playing.size
+    });
+
+    resolve({ sourceId, overlapping: session.playing.size });
+  });
+}
+
+async function createSession(guild, voiceChannel) {
+  const connection = joinVoiceChannel({
+    channelId: voiceChannel.id,
+    guildId: guild.id,
+    adapterCreator: guild.voiceAdapterCreator,
+    selfDeaf: true,
+    selfMute: false
+  });
+
+  try {
+    await entersState(connection, VoiceConnectionStatus.Ready, 10_000);
+  } catch (err) {
+    try { connection.destroy(); } catch {}
+    logger.error('voice connection failed', { guildId: guild.id, err: err.message });
+    throw new Error('Could not connect to voice channel');
+  }
+
+  const mixer = new Mixer();
+  const player = createAudioPlayer({
+    behaviors: {
+      noSubscriber: NoSubscriberBehavior.Pause
+    }
+  });
+
+  const resource = createAudioResource(mixer, {
+    inputType: StreamType.Raw,
+    inlineVolume: false
+  });
+
+  player.play(resource);
+  connection.subscribe(player);
+
+  const session = {
+    connection,
+    player,
+    mixer,
+    channelId: voiceChannel.id,
+    playing: new Map(),
+    cleanupScheduled: false
+  };
+  sessions.set(guild.id, session);
+
+  // When mixer drains completely, schedule cleanup (brief grace period so
+  // back-to-back plays don't cause a disconnect/reconnect flicker).
+  mixer.on('empty', () => {
+    if (session.cleanupScheduled) return;
+    session.cleanupScheduled = true;
+    setTimeout(() => {
+      const current = sessions.get(guild.id);
+      if (current === session && session.playing.size === 0) {
+        cleanupSession(guild.id, 'drained');
+      } else if (current === session) {
+        session.cleanupScheduled = false;
+      }
+    }, 400);
+  });
+
+  player.on('error', err => {
+    logger.error('audio player error', { guildId: guild.id, err: err.message });
+    cleanupSession(guild.id, 'player-error');
+  });
+
+  connection.on(VoiceConnectionStatus.Disconnected, async () => {
+    try {
+      await Promise.race([
+        entersState(connection, VoiceConnectionStatus.Signalling, 5_000),
+        entersState(connection, VoiceConnectionStatus.Connecting, 5_000)
+      ]);
+      // Moved/reconnecting — let it recover
+    } catch {
+      cleanupSession(guild.id, 'disconnected');
+    }
+  });
+
+  connection.on(VoiceConnectionStatus.Destroyed, () => {
+    cleanupSession(guild.id, 'connection-destroyed');
+  });
+
+  logger.ok('voice session started', { guildId: guild.id, channelId: voiceChannel.id });
+  return session;
+}
+
+/**
+ * Immediately stop playback and disconnect from voice in the given guild.
+ */
+export function stopSession(guildId, reason = 'manual') {
+  cleanupSession(guildId, reason);
+}
+
+function cleanupSession(guildId, reason) {
+  const session = sessions.get(guildId);
+  if (!session) return;
+  sessions.delete(guildId);
+
+  try { session.mixer.cleanup(); } catch (err) {
+    logger.warn('mixer cleanup threw', { err: err.message });
+  }
+  try { session.player.stop(true); } catch (err) {
+    logger.warn('player stop threw', { err: err.message });
+  }
+  try { session.connection.destroy(); } catch (err) {
+    // Already destroyed is fine
+  }
+
+  logger.info('voice session ended', { guildId, reason });
+}

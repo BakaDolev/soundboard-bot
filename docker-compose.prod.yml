@@ -1,0 +1,18 @@
+# Production compose file — pulls the pre-built image from ghcr.io.
+# Use this on Unraid / production deployments where you don't want to build locally.
+#
+# Usage:
+#   docker compose -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.prod.yml up -d
+
+services:
+  soundboard-bot:
+    image: ghcr.io/bakadolev/soundboard-bot:latest
+    container_name: soundboard-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./sounds:/app/sounds
+      - ./data:/app/data
+      - ./logs:/app/logs

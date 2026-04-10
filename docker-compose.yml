@@ -1,0 +1,12 @@
+services:
+  soundboard-bot:
+    build: .
+    image: soundboard-bot:latest
+    container_name: soundboard-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./sounds:/app/sounds
+      - ./data:/app/data
+      - ./logs:/app/logs
