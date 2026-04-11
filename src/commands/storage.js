@@ -10,6 +10,7 @@ import {
 } from '../storage.js';
 import { isOverridden } from '../settings.js';
 import { displayName } from '../names.js';
+import { replyFlags } from './visibility.js';
 
 export async function handleStorage(interaction) {
   const guildId = interaction.guild?.id || null;
@@ -74,5 +75,5 @@ export async function handleStorage(interaction) {
     });
   }
 
-  await interaction.reply({ embeds: [embed] });
+  await interaction.reply({ embeds: [embed], flags: replyFlags(interaction) });
 }

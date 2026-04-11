@@ -1,8 +1,8 @@
-import { MessageFlags } from 'discord.js';
 import { queries } from '../db/database.js';
 import { isOwner } from '../admins.js';
 import { storeName, displayName, canonicalize } from '../names.js';
 import { logger } from '../logger.js';
+import { replyFlags } from './visibility.js';
 
 // Edit/rename. Permission: uploader OR bot owner. Filename on disk is opaque
 // (random hex) so renaming only touches DB rows.
@@ -13,7 +13,7 @@ export async function handleEdit(interaction) {
   if (!sound) {
     return interaction.reply({
       content: `No sound named **${rawName}**.`,
-      flags: MessageFlags.Ephemeral
+      flags: replyFlags(interaction)
     });
   }
 
@@ -22,7 +22,7 @@ export async function handleEdit(interaction) {
   if (!isUploader && !isOwner(actor)) {
     return interaction.reply({
       content: `You can only rename sounds you uploaded. **${displayName(sound.name)}** was uploaded by <@${sound.uploader_id}>.`,
-      flags: MessageFlags.Ephemeral,
+      flags: replyFlags(interaction),
       allowedMentions: { users: [] }
     });
   }
@@ -34,7 +34,7 @@ export async function handleEdit(interaction) {
   } catch (err) {
     return interaction.reply({
       content: err.message,
-      flags: MessageFlags.Ephemeral
+      flags: replyFlags(interaction)
     });
   }
 
@@ -42,7 +42,7 @@ export async function handleEdit(interaction) {
   if (newCanonical === sound.match_name) {
     return interaction.reply({
       content: 'New name matches the existing one — nothing to change.',
-      flags: MessageFlags.Ephemeral
+      flags: replyFlags(interaction)
     });
   }
 
@@ -50,7 +50,7 @@ export async function handleEdit(interaction) {
   if (collision && collision.id !== sound.id) {
     return interaction.reply({
       content: `A sound named **${displayName(newName)}** already exists.`,
-      flags: MessageFlags.Ephemeral
+      flags: replyFlags(interaction)
     });
   }
 
@@ -64,13 +64,13 @@ export async function handleEdit(interaction) {
     });
     await interaction.reply({
       content: `✏ Renamed **${displayName(sound.name)}** → **${displayName(newName)}**.`,
-      flags: MessageFlags.Ephemeral
+      flags: replyFlags(interaction)
     });
   } catch (err) {
     logger.error('sound rename failed', { id: sound.id, err: err.message });
     await interaction.reply({
       content: 'Rename failed due to an unexpected error.',
-      flags: MessageFlags.Ephemeral
+      flags: replyFlags(interaction)
     });
   }
 }

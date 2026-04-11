@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { MessageFlags } from 'discord.js';
 import { config } from '../config.js';
 import { queries } from '../db/database.js';
 import { isOwner } from '../admins.js';
@@ -10,11 +9,12 @@ import { trimOpus, parseTimeString } from '../audio/trim.js';
 import { probeDuration } from '../audio/converter.js';
 import { formatBytes } from '../storage.js';
 import { logger } from '../logger.js';
+import { replyFlags } from './visibility.js';
 
 // Trim. Permission: uploader OR bot owner. Replaces the original file in
 // place; on any failure the original is left intact.
 export async function handleCut(interaction) {
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  await interaction.deferReply({ flags: replyFlags(interaction) });
 
   const rawName = interaction.options.getString('name', true);
   const sound = queries.getByMatch.get(canonicalize(rawName));

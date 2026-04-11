@@ -1,11 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { MessageFlags } from 'discord.js';
 import { config } from '../config.js';
 import { queries } from '../db/database.js';
 import { isAdmin, isOwner } from '../admins.js';
 import { canonicalize, displayName } from '../names.js';
 import { logger } from '../logger.js';
+import { replyFlags } from './visibility.js';
 
 // Delete permission layers:
 //   - bot owner            -> any sound, any guild
@@ -20,7 +20,7 @@ export async function handleDelete(interaction) {
   if (!sound) {
     return interaction.reply({
       content: `No sound named **${rawName}**.`,
-      flags: MessageFlags.Ephemeral
+      flags: replyFlags(interaction)
     });
   }
 
@@ -38,7 +38,7 @@ export async function handleDelete(interaction) {
   if (!allowed) {
     return interaction.reply({
       content: `You can only delete sounds you uploaded. **${displayName(sound.name)}** was uploaded by <@${sound.uploader_id}>.`,
-      flags: MessageFlags.Ephemeral,
+      flags: replyFlags(interaction),
       allowedMentions: { users: [] }
     });
   }
@@ -67,7 +67,7 @@ export async function handleDelete(interaction) {
 
     await interaction.reply({
       content: `🗑 Deleted **${displayName(sound.name)}**${label}.`,
-      flags: MessageFlags.Ephemeral
+      flags: replyFlags(interaction)
     });
   } catch (err) {
     logger.error('delete failed', {
@@ -76,7 +76,7 @@ export async function handleDelete(interaction) {
     });
     await interaction.reply({
       content: 'Delete failed due to an unexpected error.',
-      flags: MessageFlags.Ephemeral
+      flags: replyFlags(interaction)
     });
   }
 }

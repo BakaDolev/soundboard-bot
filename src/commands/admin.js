@@ -1,4 +1,3 @@
-import { MessageFlags } from 'discord.js';
 import {
   isAdmin,
   isBotAdmin,
@@ -9,6 +8,7 @@ import {
 } from '../admins.js';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
+import { replyFlags } from './visibility.js';
 
 // All `/sb admin` operations are scoped to the current guild. Permission to
 // add or remove admins requires being an admin in that guild (per the guild's
@@ -21,7 +21,7 @@ export async function handleAdminAdd(interaction) {
   if (!isAdmin(guild, actor)) {
     return interaction.reply({
       content: 'Only bot admins can manage admins in this server.',
-      flags: MessageFlags.Ephemeral
+      flags: replyFlags(interaction)
     });
   }
 
@@ -29,13 +29,13 @@ export async function handleAdminAdd(interaction) {
   if (target.bot) {
     return interaction.reply({
       content: 'Bots cannot be admins.',
-      flags: MessageFlags.Ephemeral
+      flags: replyFlags(interaction)
     });
   }
   if (isBotAdmin(guild.id, target.id)) {
     return interaction.reply({
       content: `<@${target.id}> is already a bot admin in this server.`,
-      flags: MessageFlags.Ephemeral,
+      flags: replyFlags(interaction),
       allowedMentions: { users: [] }
     });
   }
@@ -45,7 +45,7 @@ export async function handleAdminAdd(interaction) {
 
   await interaction.reply({
     content: `✅ Added <@${target.id}> as a bot admin in **${guild.name}**.`,
-    flags: MessageFlags.Ephemeral,
+    flags: replyFlags(interaction),
     allowedMentions: { users: [] }
   });
 }
@@ -56,7 +56,7 @@ export async function handleAdminRemove(interaction) {
   if (!isAdmin(guild, actor)) {
     return interaction.reply({
       content: 'Only bot admins can manage admins in this server.',
-      flags: MessageFlags.Ephemeral
+      flags: replyFlags(interaction)
     });
   }
 
@@ -64,13 +64,13 @@ export async function handleAdminRemove(interaction) {
   if (isOwner(target.id)) {
     return interaction.reply({
       content: 'The bot owner cannot be removed.',
-      flags: MessageFlags.Ephemeral
+      flags: replyFlags(interaction)
     });
   }
   if (!isBotAdmin(guild.id, target.id)) {
     return interaction.reply({
       content: `<@${target.id}> is not a bot admin in this server.`,
-      flags: MessageFlags.Ephemeral,
+      flags: replyFlags(interaction),
       allowedMentions: { users: [] }
     });
   }
@@ -80,7 +80,7 @@ export async function handleAdminRemove(interaction) {
 
   await interaction.reply({
     content: `🗑 Removed <@${target.id}> as a bot admin in **${guild.name}**.`,
-    flags: MessageFlags.Ephemeral,
+    flags: replyFlags(interaction),
     allowedMentions: { users: [] }
   });
 }
@@ -97,7 +97,7 @@ export async function handleAdminList(interaction) {
 
   await interaction.reply({
     content: `**Bot Admins in ${guild.name} (${lines.length})**\n${lines.join('\n')}`,
-    flags: MessageFlags.Ephemeral,
+    flags: replyFlags(interaction),
     allowedMentions: { users: [] }
   });
 }

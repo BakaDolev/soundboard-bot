@@ -22,6 +22,8 @@ Runs as a Docker container on Unraid (or anywhere Docker runs).
 - `/sb admin add @user`, `/sb admin remove @user`, `/sb admin list` 🔒 — manage **per-server** bot admins
 - `/sb settings view|set|unset` 🔒 — configure per-server limits and toggles
 - Autocomplete on every sound-name option, with loose matching across spaces/hyphens/underscores
+- Every subcommand takes an optional `visibility:true` flag — replies are private by default, pass `visibility:true` to post the reply publicly in the channel (vote messages for `/sb stop` / `/sb pause` / `/sb resume` are always public since others need to click the vote button)
+- `/sb settings set` autocompletes the `value` field based on the chosen `key` — enum settings (`upload_scope`, `view_scope`, `admin_mode`) list each valid value with a description; numeric settings surface the current default
 - Channel lock: non-admins can't move the bot while it's playing in another channel
 - Admin priority: admin `/sb play` overrides the channel lock
 - Auto-disconnect after the last sound finishes

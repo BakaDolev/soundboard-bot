@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { MessageFlags } from 'discord.js';
 import { queries } from '../db/database.js';
 import { probeDuration, convertToOpus } from '../audio/converter.js';
 import {
@@ -14,6 +13,7 @@ import { isAdmin } from '../admins.js';
 import { getSetting } from '../settings.js';
 import { storeName, displayName, canonicalize } from '../names.js';
 import { logger } from '../logger.js';
+import { replyFlags } from './visibility.js';
 
 // Hardcoded absolute ceiling — applies even to admins.
 const ADMIN_HARD_CAP_MB = 200;
@@ -22,7 +22,7 @@ const ADMIN_HARD_CAP_BYTES = ADMIN_HARD_CAP_MB * 1024 * 1024;
 const USER_INPUT_CAP_BYTES = 100 * 1024 * 1024;
 
 export async function handleUpload(interaction) {
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  await interaction.deferReply({ flags: replyFlags(interaction) });
 
   const attachment = interaction.options.getAttachment('file');
   const guild = interaction.guild;

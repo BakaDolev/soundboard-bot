@@ -1,7 +1,7 @@
 import { Client, Events, GatewayIntentBits, MessageFlags } from 'discord.js';
 import { logger } from './logger.js';
 import { queries } from './db/database.js';
-import { getSetting } from './settings.js';
+import { getSetting, getSettingDef } from './settings.js';
 import { canonicalize, displayName } from './names.js';
 import { handleUpload } from './commands/upload.js';
 import { handlePlay } from './commands/play.js';
@@ -119,31 +119,71 @@ export function createBot() {
         }
       }
 
-      // --- Autocomplete for sound name option ------------------------------
+      // --- Autocomplete dispatch -------------------------------------------
       if (interaction.isAutocomplete() && COMMAND_NAMES.has(interaction.commandName)) {
         const focused = interaction.options.getFocused(true);
-        if (focused.name !== 'name') {
-          return interaction.respond([]);
+
+        // Sound-name autocomplete (upload/play/edit/cut/delete).
+        if (focused.name === 'name') {
+          const query = focused.value || '';
+          // Canonicalize the query so spaces, hyphens, underscores all match.
+          // Strip SQL LIKE wildcards from the canonical form.
+          const canonical = canonicalize(query).replace(/[%_]/g, '');
+          const pattern = `%${canonical}%`;
+
+          const viewScope = getSetting(interaction.guild.id, 'view_scope');
+          const rows =
+            viewScope === 'guild'
+              ? queries.searchForGuild.all(interaction.guild.id, pattern)
+              : queries.searchGlobal.all(pattern);
+
+          // Display the user-friendly form, but use the stored kebab-case as
+          // the autocomplete value so handlers see a canonical input.
+          const choices = rows.slice(0, 25).map(s => ({
+            name: displayName(s.name),
+            value: s.name
+          }));
+          return interaction.respond(choices);
         }
-        const query = focused.value || '';
-        // Canonicalize the query so spaces, hyphens, underscores all match.
-        // Strip SQL LIKE wildcards from the canonical form.
-        const canonical = canonicalize(query).replace(/[%_]/g, '');
-        const pattern = `%${canonical}%`;
 
-        const viewScope = getSetting(interaction.guild.id, 'view_scope');
-        const rows =
-          viewScope === 'guild'
-            ? queries.searchForGuild.all(interaction.guild.id, pattern)
-            : queries.searchGlobal.all(pattern);
+        // `/sb settings set value:` — suggest options for the currently
+        // selected key. Enum keys list each valid value with a description;
+        // numeric keys surface the current default as a one-click suggestion.
+        if (
+          focused.name === 'value' &&
+          interaction.options.getSubcommandGroup(false) === 'settings' &&
+          interaction.options.getSubcommand(false) === 'set'
+        ) {
+          const key = interaction.options.getString('key');
+          if (!key) return interaction.respond([]);
+          const def = getSettingDef(key);
+          if (!def) return interaction.respond([]);
 
-        // Display the user-friendly form, but use the stored kebab-case as
-        // the autocomplete value so handlers see a canonical input.
-        const choices = rows.slice(0, 25).map(s => ({
-          name: displayName(s.name),
-          value: s.name
-        }));
-        return interaction.respond(choices);
+          const query = String(focused.value || '').toLowerCase();
+          const choices = [];
+
+          if (def.type === 'enum' && Array.isArray(def.options)) {
+            for (const opt of def.options) {
+              if (query && !opt.value.toLowerCase().includes(query)) continue;
+              // Discord caps autocomplete `name` at 100 chars.
+              const label = `${opt.value} — ${opt.describe}`;
+              const shown = label.length > 100 ? label.slice(0, 97) + '...' : label;
+              choices.push({ name: shown, value: opt.value });
+            }
+          } else if (def.type === 'int' || def.type === 'float') {
+            try {
+              const current = def.default();
+              choices.push({
+                name: `current default: ${current}`,
+                value: String(current)
+              });
+            } catch {}
+          }
+
+          return interaction.respond(choices.slice(0, 25));
+        }
+
+        return interaction.respond([]);
       }
 
       // --- Vote buttons -----------------------------------------------------

@@ -1,4 +1,3 @@
-import { MessageFlags } from 'discord.js';
 import { getSession, stopSession } from '../audio/player.js';
 import { isAdmin } from '../admins.js';
 import { logger } from '../logger.js';
@@ -7,6 +6,7 @@ import {
   handleVoteButton,
   cancelVote
 } from '../voteHelper.js';
+import { replyFlags } from './visibility.js';
 
 export async function handleStop(interaction) {
   const guild = interaction.guild;
@@ -14,7 +14,7 @@ export async function handleStop(interaction) {
   if (!session) {
     return interaction.reply({
       content: 'Nothing is playing right now.',
-      flags: MessageFlags.Ephemeral
+      flags: replyFlags(interaction)
     });
   }
 
@@ -23,7 +23,10 @@ export async function handleStop(interaction) {
     stopSession(guild.id, 'admin-stop');
     cancelVote('stop', guild.id);
     logger.ok('stop by admin', { guildId: guild.id, userId: interaction.user.id });
-    return interaction.reply({ content: '🛑 Playback stopped by admin.' });
+    return interaction.reply({
+      content: '🛑 Playback stopped by admin.',
+      flags: replyFlags(interaction)
+    });
   }
 
   // --- User: vote -----------------------------------------------------------
@@ -32,7 +35,7 @@ export async function handleStop(interaction) {
     stopSession(guild.id, 'channel-gone');
     return interaction.reply({
       content: 'Voice channel no longer exists. Playback stopped.',
-      flags: MessageFlags.Ephemeral
+      flags: replyFlags(interaction)
     });
   }
 
@@ -40,7 +43,7 @@ export async function handleStop(interaction) {
   if (!humans.has(interaction.user.id)) {
     return interaction.reply({
       content: `You need to be in <#${voiceChannel.id}> to vote-stop.`,
-      flags: MessageFlags.Ephemeral
+      flags: replyFlags(interaction)
     });
   }
 

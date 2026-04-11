@@ -1,4 +1,3 @@
-import { MessageFlags } from 'discord.js';
 import {
   getSession,
   pauseSession,
@@ -13,6 +12,7 @@ import {
   handleVoteButton,
   cancelVote
 } from '../voteHelper.js';
+import { replyFlags } from './visibility.js';
 
 // --- /sb pause --------------------------------------------------------------
 
@@ -22,13 +22,13 @@ export async function handlePause(interaction) {
   if (!session) {
     return interaction.reply({
       content: 'Nothing is playing right now.',
-      flags: MessageFlags.Ephemeral
+      flags: replyFlags(interaction)
     });
   }
   if (isPaused(guild.id)) {
     return interaction.reply({
       content: 'Playback is already paused. Use `/sb resume` to continue.',
-      flags: MessageFlags.Ephemeral
+      flags: replyFlags(interaction)
     });
   }
 
@@ -47,12 +47,13 @@ export async function handlePause(interaction) {
         asInitiator: initiator
       });
       return interaction.reply({
-        content: `⏸ Playback paused. The bot will disconnect after 2 minutes if not resumed.`
+        content: `⏸ Playback paused. The bot will disconnect after 2 minutes if not resumed.`,
+        flags: replyFlags(interaction)
       });
     }
     return interaction.reply({
       content: 'Could not pause playback.',
-      flags: MessageFlags.Ephemeral
+      flags: replyFlags(interaction)
     });
   }
 
@@ -61,14 +62,14 @@ export async function handlePause(interaction) {
   if (!voiceChannel) {
     return interaction.reply({
       content: 'Voice channel no longer exists.',
-      flags: MessageFlags.Ephemeral
+      flags: replyFlags(interaction)
     });
   }
   const humans = voiceChannel.members.filter(m => !m.user.bot);
   if (!humans.has(userId)) {
     return interaction.reply({
       content: `You need to be in <#${voiceChannel.id}> to vote.`,
-      flags: MessageFlags.Ephemeral
+      flags: replyFlags(interaction)
     });
   }
 
@@ -112,13 +113,13 @@ export async function handleResume(interaction) {
   if (!session) {
     return interaction.reply({
       content: 'Nothing is playing right now.',
-      flags: MessageFlags.Ephemeral
+      flags: replyFlags(interaction)
     });
   }
   if (!isPaused(guild.id)) {
     return interaction.reply({
       content: 'Playback is not paused.',
-      flags: MessageFlags.Ephemeral
+      flags: replyFlags(interaction)
     });
   }
 
@@ -130,11 +131,14 @@ export async function handleResume(interaction) {
     if (resumeSession(guild.id)) {
       cancelVote('resume', guild.id);
       logger.ok('resume instant', { guildId: guild.id, by: userId });
-      return interaction.reply({ content: '▶ Playback resumed.' });
+      return interaction.reply({
+        content: '▶ Playback resumed.',
+        flags: replyFlags(interaction)
+      });
     }
     return interaction.reply({
       content: 'Could not resume playback.',
-      flags: MessageFlags.Ephemeral
+      flags: replyFlags(interaction)
     });
   }
 
@@ -142,14 +146,14 @@ export async function handleResume(interaction) {
   if (!voiceChannel) {
     return interaction.reply({
       content: 'Voice channel no longer exists.',
-      flags: MessageFlags.Ephemeral
+      flags: replyFlags(interaction)
     });
   }
   const humans = voiceChannel.members.filter(m => !m.user.bot);
   if (!humans.has(userId)) {
     return interaction.reply({
       content: `You need to be in <#${voiceChannel.id}> to vote.`,
-      flags: MessageFlags.Ephemeral
+      flags: replyFlags(interaction)
     });
   }
 

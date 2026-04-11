@@ -1,6 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs';
-import { PermissionFlagsBits, MessageFlags } from 'discord.js';
+import { PermissionFlagsBits } from 'discord.js';
 import { config } from '../config.js';
 import { queries } from '../db/database.js';
 import { getSession, playSound, stopSession } from '../audio/player.js';
@@ -8,6 +8,7 @@ import { isAdmin } from '../admins.js';
 import { getSetting } from '../settings.js';
 import { canonicalize, displayName } from '../names.js';
 import { logger } from '../logger.js';
+import { replyFlags } from './visibility.js';
 
 export async function handlePlay(interaction) {
   const rawName = interaction.options.getString('name');
@@ -16,7 +17,7 @@ export async function handlePlay(interaction) {
   if (!sound) {
     return interaction.reply({
       content: `No sound named **${rawName}**. Use \`/sb list\` to see available sounds.`,
-      flags: MessageFlags.Ephemeral
+      flags: replyFlags(interaction)
     });
   }
 
@@ -31,7 +32,7 @@ export async function handlePlay(interaction) {
   if (!visible) {
     return interaction.reply({
       content: `**${displayName(sound.name)}** isn't available in this server.`,
-      flags: MessageFlags.Ephemeral
+      flags: replyFlags(interaction)
     });
   }
 
@@ -41,7 +42,7 @@ export async function handlePlay(interaction) {
   if (!userVoice) {
     return interaction.reply({
       content: 'You need to be in a voice channel to play sounds.',
-      flags: MessageFlags.Ephemeral
+      flags: replyFlags(interaction)
     });
   }
 
@@ -51,7 +52,7 @@ export async function handlePlay(interaction) {
   if (!perms?.has(PermissionFlagsBits.Connect) || !perms?.has(PermissionFlagsBits.Speak)) {
     return interaction.reply({
       content: `I don't have permission to connect or speak in <#${userVoice.id}>.`,
-      flags: MessageFlags.Ephemeral
+      flags: replyFlags(interaction)
     });
   }
 
@@ -73,7 +74,7 @@ export async function handlePlay(interaction) {
     } else {
       return interaction.reply({
         content: `🔒 I'm currently playing in <#${session.channelId}>. Wait for it to finish or ask an admin.`,
-        flags: MessageFlags.Ephemeral
+        flags: replyFlags(interaction)
       });
     }
   }
@@ -87,14 +88,14 @@ export async function handlePlay(interaction) {
     });
     return interaction.reply({
       content: `The file for **${sound.name}** is missing from disk. It may have been deleted manually.`,
-      flags: MessageFlags.Ephemeral
+      flags: replyFlags(interaction)
     });
   }
 
   // --- Play -----------------------------------------------------------------
   // Defer here — voice connection can take >3s, which would expire the interaction token.
-  // Quick pre-play validation above stays as non-deferred ephemeral replies.
-  await interaction.deferReply();
+  // Ephemeral vs public is locked in at deferReply time; editReply can't change it.
+  await interaction.deferReply({ flags: replyFlags(interaction) });
 
   try {
     const result = await playSound(
@@ -108,8 +109,7 @@ export async function handlePlay(interaction) {
     const display = displayName(sound.name);
     const suffix = result.overlapping > 1 ? ` (${result.overlapping} sounds overlapping)` : '';
     await interaction.editReply({
-      content: `▶ Playing **${display}**${suffix}`,
-      flags: MessageFlags.Ephemeral
+      content: `▶ Playing **${display}**${suffix}`
     });
   } catch (err) {
     logger.error('play failed', {
@@ -118,8 +118,7 @@ export async function handlePlay(interaction) {
       err: err.message
     });
     await interaction.editReply({
-      content: `Failed to play **${displayName(sound.name)}**: ${err.message}`,
-      flags: MessageFlags.Ephemeral
+      content: `Failed to play **${displayName(sound.name)}**: ${err.message}`
     });
   }
 }

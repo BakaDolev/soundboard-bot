@@ -1,4 +1,4 @@
-import { EmbedBuilder, MessageFlags } from 'discord.js';
+import { EmbedBuilder } from 'discord.js';
 import {
   SETTING_KEYS,
   getSettingDef,
@@ -8,25 +8,26 @@ import {
 } from '../settings.js';
 import { isAdmin, isOwner } from '../admins.js';
 import { logger } from '../logger.js';
+import { replyFlags } from './visibility.js';
 
-function denyOwnerOnly() {
+function denyOwnerOnly(interaction) {
   return {
     content: '🔒 That setting can only be changed by the bot owner.',
-    flags: MessageFlags.Ephemeral
+    flags: replyFlags(interaction)
   };
 }
 
-function denyNotAdmin() {
+function denyNotAdmin(interaction) {
   return {
     content: '🔒 Only bot admins can change settings in this server.',
-    flags: MessageFlags.Ephemeral
+    flags: replyFlags(interaction)
   };
 }
 
 export async function handleSettingsView(interaction) {
   const guild = interaction.guild;
   if (!isAdmin(guild, interaction.user.id)) {
-    return interaction.reply(denyNotAdmin());
+    return interaction.reply(denyNotAdmin(interaction));
   }
 
   const rows = listSettings(guild.id);
@@ -46,14 +47,14 @@ export async function handleSettingsView(interaction) {
       text: '🔒 = owner only. Use /sb settings set or /sb settings unset to change.'
     });
 
-  await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+  await interaction.reply({ embeds: [embed], flags: replyFlags(interaction) });
 }
 
 export async function handleSettingsSet(interaction) {
   const guild = interaction.guild;
   const actor = interaction.user.id;
   if (!isAdmin(guild, actor)) {
-    return interaction.reply(denyNotAdmin());
+    return interaction.reply(denyNotAdmin(interaction));
   }
 
   const key = interaction.options.getString('key', true);
@@ -63,24 +64,24 @@ export async function handleSettingsSet(interaction) {
   if (!def) {
     return interaction.reply({
       content: `Unknown setting key: \`${key}\`. Valid keys: ${SETTING_KEYS.join(', ')}.`,
-      flags: MessageFlags.Ephemeral
+      flags: replyFlags(interaction)
     });
   }
   if (def.ownerOnly && !isOwner(actor)) {
-    return interaction.reply(denyOwnerOnly());
+    return interaction.reply(denyOwnerOnly(interaction));
   }
 
   try {
     const parsed = setSetting(guild.id, key, rawValue, actor);
     await interaction.reply({
       content: `✅ Set **${key}** to \`${parsed}\` for **${guild.name}**.`,
-      flags: MessageFlags.Ephemeral
+      flags: replyFlags(interaction)
     });
   } catch (err) {
     logger.warn('settings set failed', { guildId: guild.id, key, rawValue, err: err.message });
     await interaction.reply({
       content: `❌ ${err.message}`,
-      flags: MessageFlags.Ephemeral
+      flags: replyFlags(interaction)
     });
   }
 }
@@ -89,7 +90,7 @@ export async function handleSettingsUnset(interaction) {
   const guild = interaction.guild;
   const actor = interaction.user.id;
   if (!isAdmin(guild, actor)) {
-    return interaction.reply(denyNotAdmin());
+    return interaction.reply(denyNotAdmin(interaction));
   }
 
   const key = interaction.options.getString('key', true);
@@ -98,16 +99,16 @@ export async function handleSettingsUnset(interaction) {
   if (!def) {
     return interaction.reply({
       content: `Unknown setting key: \`${key}\`.`,
-      flags: MessageFlags.Ephemeral
+      flags: replyFlags(interaction)
     });
   }
   if (def.ownerOnly && !isOwner(actor)) {
-    return interaction.reply(denyOwnerOnly());
+    return interaction.reply(denyOwnerOnly(interaction));
   }
 
   unsetSetting(guild.id, key, actor);
   await interaction.reply({
     content: `↩ Cleared **${key}** for **${guild.name}** — falling back to default.`,
-    flags: MessageFlags.Ephemeral
+    flags: replyFlags(interaction)
   });
 }

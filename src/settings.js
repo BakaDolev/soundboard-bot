@@ -37,21 +37,30 @@ const SETTING_DEFS = {
   },
   upload_scope: {
     type: 'enum',
-    options: ['global', 'private'],
+    options: [
+      { value: 'global', describe: 'New uploads are visible to every guild (default).' },
+      { value: 'private', describe: 'New uploads are only visible in this guild.' }
+    ],
     default: () => 'global',
     validate: v => v === 'global' || v === 'private',
     describe: '`global` = new uploads visible to every guild. `private` = only this guild can see them.'
   },
   view_scope: {
     type: 'enum',
-    options: ['global', 'guild'],
+    options: [
+      { value: 'global', describe: 'list/play sees all public sounds across guilds (default).' },
+      { value: 'guild', describe: 'list/play only sees sounds uploaded from this guild.' }
+    ],
     default: () => 'global',
     validate: v => v === 'global' || v === 'guild',
     describe: '`global` = list/play sees all public sounds. `guild` = only sounds uploaded from this guild.'
   },
   admin_mode: {
     type: 'enum',
-    options: ['bot', 'server'],
+    options: [
+      { value: 'bot', describe: 'Admins managed via /sb admin add (default).' },
+      { value: 'server', describe: 'Anyone with Discord ADMINISTRATOR perm is a bot admin.' }
+    ],
     default: () => 'bot',
     ownerOnly: true,
     validate: v => v === 'bot' || v === 'server',
@@ -91,8 +100,9 @@ function parseValue(def, raw) {
   }
   if (def.type === 'enum') {
     const v = String(raw).trim().toLowerCase();
-    if (!def.options.includes(v)) {
-      throw new Error(`Invalid value: "${raw}". Allowed: ${def.options.join(', ')}.`);
+    const values = def.options.map(o => o.value);
+    if (!values.includes(v)) {
+      throw new Error(`Invalid value: "${raw}". Allowed: ${values.join(', ')}.`);
     }
     return v;
   }

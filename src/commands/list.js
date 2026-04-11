@@ -1,7 +1,8 @@
-import { EmbedBuilder, MessageFlags } from 'discord.js';
+import { EmbedBuilder } from 'discord.js';
 import { queries } from '../db/database.js';
 import { getSetting } from '../settings.js';
 import { displayName } from '../names.js';
+import { replyFlags } from './visibility.js';
 
 const EMBED_DESC_LIMIT = 4000;
 
@@ -23,7 +24,7 @@ export async function handleList(interaction) {
         : 'No sounds uploaded yet. Use `/sb upload` to add one.';
     return interaction.reply({
       content: hint,
-      flags: MessageFlags.Ephemeral
+      flags: replyFlags(interaction)
     });
   }
 
@@ -58,5 +59,5 @@ export async function handleList(interaction) {
     embed.setFooter({ text: 'Some sounds omitted — refine with autocomplete when playing.' });
   }
 
-  await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+  await interaction.reply({ embeds: [embed], flags: replyFlags(interaction) });
 }
