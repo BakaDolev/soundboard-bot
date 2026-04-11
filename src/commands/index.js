@@ -25,17 +25,23 @@ function buildSlashCommand(name) {
       withVisibility(
         s
           .setName('upload')
-          .setDescription('Upload a new sound (audio or video file)')
+          .setDescription('Upload a new sound (audio/video file or YouTube link)')
+          .addStringOption(o =>
+            o
+              .setName('name')
+              .setDescription("Sound name (1-32 chars; spaces, hyphens, underscores, all are fine)")
+              .setRequired(true)
+              .setMinLength(1)
+              .setMaxLength(100)
+          )
           .addAttachmentOption(o =>
             o.setName('file').setDescription('Audio or video file').setRequired(true)
           )
           .addStringOption(o =>
             o
-              .setName('name')
-              .setDescription('Sound name (1-32 chars; spaces, hyphens, underscores all OK)')
-              .setRequired(true)
-              .setMinLength(1)
-              .setMaxLength(64)
+              .setName('youtube_url')
+              .setDescription('YouTube video URL (alternative to uploading a file)')
+              .setRequired(false)
           )
       )
     )

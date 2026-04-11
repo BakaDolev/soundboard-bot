@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { spawn } from 'node:child_process';
 import { config } from '../config.js';
 import { queries } from '../db/database.js';
 import { probeDuration, convertToOpus } from '../audio/converter.js';
@@ -15,6 +16,7 @@ import { getSetting } from '../settings.js';
 import { storeName, displayName, canonicalize } from '../names.js';
 import { logger } from '../logger.js';
 import { replyFlags } from './visibility.js';
+import { error } from 'node:console';
 
 // Hardcoded absolute ceiling — applies even to admins.
 const ADMIN_HARD_CAP_MB = 200;
@@ -22,12 +24,27 @@ const ADMIN_HARD_CAP_BYTES = ADMIN_HARD_CAP_MB * 1024 * 1024;
 // Raw pre-conversion input cap for regular users.
 const USER_INPUT_CAP_BYTES = 100 * 1024 * 1024;
 
+const YOUTUBE_REGEX = /^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?.*v=|youtu\.be\/)[\w-]+/;
+
 export async function handleUpload(interaction) {
   await interaction.deferReply({ flags: replyFlags(interaction) });
 
   const attachment = interaction.options.getAttachment('file');
+  const youtubeUrl = interaction.options.getString('youtube_url');
+
   const guild = interaction.guild;
   const admin = isAdmin(guild, interaction.user.id);
+
+  // --- Must provide exactly one source -------------------------------------
+  if (!attachment && !youtubeUrl) {
+    return interaction.editReply('You must provide either a ***file*** attachment or a ***YouTube URL.***');
+  }
+  if (attachment && youtubeUrl) {
+    return interaction.editReply('Provide either a file **or** a YouTube URL, not both. Dumwit.');
+  }
+  if (youtubeUrl && !YOUTUBE_REGEX.test(youtubeUrl)) {
+    return interaction.editReply("That doesn't look like a valid Youtube URL. Are you sure its a YouTube URL ya dumbass!?")
+  }
 
   // --- Normalize & validate name -------------------------------------------
   // Accept anything reasonable; storeName turns it into kebab-case and
@@ -80,17 +97,20 @@ export async function handleUpload(interaction) {
     );
   }
 
-  // --- Raw attachment sanity ------------------------------------------------
+  // --- Raw attachment sanity (YouTube skips this; No known size yet) ------------------------------------------------
   // Admins: up to the hardcoded 200MB absolute ceiling.
   // Users: up to USER_INPUT_CAP_BYTES (100MB).
-  const maxInputBytes = admin ? ADMIN_HARD_CAP_BYTES : USER_INPUT_CAP_BYTES;
-  if (attachment.size > maxInputBytes) {
-    return interaction.editReply(
-      `Input file too large (${formatBytes(attachment.size)}). Max for ${
-        admin ? 'admins' : 'users'
-      } is ${formatBytes(maxInputBytes)}.`
-    );
+  if (attachment) {
+    const maxInputBytes = admin ? ADMIN_HARD_CAP_BYTES : USER_INPUT_CAP_BYTES;
+    if (attachment.size > maxInputBytes) {
+      return interaction.editReply(
+        `Input file too large (${formatBytes(attachment.size)}). Max for ${
+          admin ? 'admins' : 'users'
+        } is ${formatBytes(maxInputBytes)}.`
+      );
+    }
   }
+  
 
   // --- Download to temp -----------------------------------------------------
   const tempDir = path.join(config.dataDir, 'temp');
@@ -98,18 +118,23 @@ export async function handleUpload(interaction) {
   fs.mkdirSync(config.soundsDir, { recursive: true });
 
   const tempId = crypto.randomBytes(8).toString('hex');
-  const inputExt = path.extname(attachment.name || '').toLowerCase() || '.bin';
-  const tempInput = path.join(tempDir, `${tempId}${inputExt}`);
+  let tempInput = null;
 
   let outPath = null;
 
   try {
-    const res = await fetch(attachment.url);
-    if (!res.ok) {
-      throw new Error(`download failed: HTTP ${res.status}`);
+    if (attachment) {
+      const inputExt = path.extname(attachment.name || '').toLowerCase() || '.bin';
+      tempInput = path.join(tempDir, `${tempId}${inputExt}`);
+      const res = await fetch(attachment.url);
+
+      if (!res.ok) throw new Error(`Download failed: HTTP ${res.status}`);
+      const buffer = Buffer.from(await res.arrayBuffer());
+      fs.writeFileSync(tempInput, buffer);
+    } else {
+      tempInput = await downloadYoutube(youtubeUrl, tempDir, tempId);
     }
-    const buffer = Buffer.from(await res.arrayBuffer());
-    fs.writeFileSync(tempInput, buffer);
+   
 
     // --- Probe duration -----------------------------------------------------
     let duration;
@@ -206,10 +231,53 @@ export async function handleUpload(interaction) {
     safeUnlink(tempInput);
     if (outPath) safeUnlink(outPath);
     try {
-      await interaction.editReply('Upload failed due to an unexpected error. Check the logs.');
+      await interaction.editReply(err.userMessage ||'Upload failed due to an unexpected error. Check the logs.');
     } catch {}
   }
 }
+
+
+/**
+ * Download audio from YouTube using yt-dlp
+ * It returns the path to the downloaded temp file
+ */
+function downloadYouTube(url, tempDir, tempId) {
+  return new Promise((resolve, reject) => {
+    const outputTemplate = path.join(tempDir, `${tempId}.%(ext)s`);
+    const args = ['--no-playlist', '--format', 'bestaudio', '--output', outputTemplate, url];
+
+    logger.info('yt-dlp download starting', { url });
+    const proc = spawn('yt-dlp', args);
+
+    let stderr = '';
+    proc.stderr.on('data', d => { stderr += d.toString(); });
+
+    proc.on('error', () => {
+      const e = new Error('yt-dlp not available');
+      e.userMessage = "yt-dlp is not installed on this bot. Contact your administrator. Or don't, I'm just a message.";
+      reject(e);
+    });
+
+    proc.on('close', code => {
+      if (code !== 0) {
+        logger.fail('yt-dlp failed', { code, stderr: stderr.slice(0, 500) });
+        const e = new Error(`yt-dlp exited with code ${code}`);
+        e.userMessage = 'Could not download that YouTube video. It may be private, age-restricted, or unavailable, but I know that you are retarded ;>';
+        return reject(e);
+      }
+      const downloaded = fs.readdirSync(tempDir).find(f => f.startsWith(tempId));
+      if (!downloaded) {
+        const e = new Error('yt-dlp finished but no output file found');
+        e.userMessage = 'Downloaded appeared to succeed but no audio file was produced, oops...';
+        return reject(e);
+      }
+      logger.ok('yt-dlp download complete', { file: downloaded });
+      resolve(path.join(tempDir, downloaded));
+    });
+  });
+}
+
+
 
 function safeUnlink(p) {
   if (!p) return;
