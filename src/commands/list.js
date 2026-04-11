@@ -3,7 +3,7 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  UserSelectMenuBuilder,
+  StringSelectMenuBuilder,
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
@@ -19,6 +19,38 @@ const PAGE_SIZE = 15;
 const EMBED_DESC_LIMIT = 4000;
 const COLLECTOR_IDLE_MS = 5 * 60 * 1000;
 const MODAL_WAIT_MS = 2 * 60 * 1000;
+// Discord hard cap on StringSelectMenu options.
+const UPLOADER_SELECT_LIMIT = 25;
+
+/**
+ * Collapse the sound list down to a unique set of uploaders with their
+ * stored tag and sound count. Sorted most-prolific-first so the select menu
+ * surfaces the most useful options when there are more than 25 uploaders.
+ */
+function buildUploaderStats(sounds) {
+  const map = new Map();
+  for (const s of sounds) {
+    const existing = map.get(s.uploader_id);
+    if (existing) {
+      existing.count++;
+      // Refresh the tag from later rows so renamed users get their newer tag.
+      if (s.uploader_tag) existing.tag = s.uploader_tag;
+    } else {
+      map.set(s.uploader_id, {
+        id: s.uploader_id,
+        tag: s.uploader_tag || s.uploader_id,
+        count: 1
+      });
+    }
+  }
+  return Array.from(map.values()).sort((a, b) => b.count - a.count);
+}
+
+function findUploaderTag(uploaders, id) {
+  if (!id) return null;
+  const found = uploaders.find(u => u.id === id);
+  return found ? found.tag : id;
+}
 
 function fetchAllForScope(guildId) {
   const viewScope = getSetting(guildId, 'view_scope');
@@ -52,11 +84,21 @@ function clampPage(page, pageCount) {
   return page;
 }
 
-function buildEmbed({ allCount, filtered, page, pageCount, viewScope, guild, filters }) {
+function buildEmbed({
+  allCount,
+  filtered,
+  page,
+  pageCount,
+  viewScope,
+  guild,
+  filters,
+  uploaders
+}) {
   const start = page * PAGE_SIZE;
   const slice = filtered.slice(start, start + PAGE_SIZE);
   const lines = slice.map(
-    s => `• **${displayName(s.name)}** (${s.duration_seconds.toFixed(1)}s) — <@${s.uploader_id}>`
+    s =>
+      `• **${displayName(s.name)}** (${s.duration_seconds.toFixed(1)}s) — ${s.uploader_tag || s.uploader_id}`
   );
 
   const scopeLabel = viewScope === 'guild' ? ` — ${guild.name}` : '';
@@ -68,7 +110,9 @@ function buildEmbed({ allCount, filtered, page, pageCount, viewScope, guild, fil
   const title = `🔊 Soundboard${scopeLabel} — ${countLabel} sound${pluralBase === 1 ? '' : 's'}`;
 
   const filterBits = [];
-  if (filters.uploaderId) filterBits.push(`uploader: <@${filters.uploaderId}>`);
+  if (filters.uploaderId) {
+    filterBits.push(`uploader: ${findUploaderTag(uploaders, filters.uploaderId)}`);
+  }
   if (filters.minLength != null) filterBits.push(`≥ ${filters.minLength}s`);
   if (filters.maxLength != null) filterBits.push(`≤ ${filters.maxLength}s`);
 
@@ -87,7 +131,7 @@ function buildEmbed({ allCount, filtered, page, pageCount, viewScope, guild, fil
     .setFooter({ text: `Page ${page + 1} / ${Math.max(1, pageCount)}` });
 }
 
-function buildComponents({ page, pageCount, filters, disabled = false }) {
+function buildComponents({ page, pageCount, filters, uploaders, disabled = false }) {
   const atStart = page <= 0;
   const atEnd = page >= pageCount - 1;
 
@@ -114,13 +158,47 @@ function buildComponents({ page, pageCount, filters, disabled = false }) {
       .setDisabled(disabled || atEnd)
   );
 
+  // Show up to UPLOADER_SELECT_LIMIT uploaders, most-prolific first. If the
+  // currently-selected uploader got cut from the top slice, splice them back
+  // in so the menu can still render its "default" state correctly.
+  const visible = uploaders.slice(0, UPLOADER_SELECT_LIMIT);
+  if (
+    filters.uploaderId &&
+    !visible.some(u => u.id === filters.uploaderId)
+  ) {
+    const picked = uploaders.find(u => u.id === filters.uploaderId);
+    if (picked) {
+      visible.pop();
+      visible.push(picked);
+    }
+  }
+
+  const options = visible.map(u => {
+    const rawLabel = `${u.tag} (${u.count})`;
+    const label = rawLabel.length > 100 ? rawLabel.slice(0, 97) + '...' : rawLabel;
+    return {
+      label,
+      value: u.id,
+      default: u.id === filters.uploaderId
+    };
+  });
+
   const uploaderRow = new ActionRowBuilder().addComponents(
-    new UserSelectMenuBuilder()
+    new StringSelectMenuBuilder()
       .setCustomId('list-uploader')
-      .setPlaceholder('Filter by uploader…')
+      .setPlaceholder(
+        uploaders.length > UPLOADER_SELECT_LIMIT
+          ? `Filter by uploader (top ${UPLOADER_SELECT_LIMIT} of ${uploaders.length})…`
+          : 'Filter by uploader…'
+      )
       .setMinValues(0)
       .setMaxValues(1)
-      .setDisabled(disabled)
+      .setDisabled(disabled || options.length === 0)
+      .addOptions(
+        options.length > 0
+          ? options
+          : [{ label: 'No uploaders', value: '__none__', default: false }]
+      )
   );
 
   const filterRow = new ActionRowBuilder().addComponents(
@@ -164,6 +242,8 @@ export async function handleList(interaction) {
     });
   }
 
+  const uploaders = buildUploaderStats(allSounds);
+
   const state = {
     page: 0,
     filters: { uploaderId: null, minLength: null, maxLength: null }
@@ -182,13 +262,15 @@ export async function handleList(interaction) {
           pageCount,
           viewScope,
           guild,
-          filters: state.filters
+          filters: state.filters,
+          uploaders
         })
       ],
       components: buildComponents({
         page: state.page,
         pageCount,
-        filters: state.filters
+        filters: state.filters,
+        uploaders
       })
     };
   };
@@ -227,11 +309,15 @@ export async function handleList(interaction) {
           state.page = Number.MAX_SAFE_INTEGER;
           await i.update(render());
           return;
-        case 'list-uploader':
-          state.filters.uploaderId = i.values?.[0] ?? null;
+        case 'list-uploader': {
+          const picked = i.values?.[0];
+          // The empty-state fallback option uses a sentinel value; ignore it
+          // so it can never apply as an actual filter.
+          state.filters.uploaderId = picked && picked !== '__none__' ? picked : null;
           state.page = 0;
           await i.update(render());
           return;
+        }
         case 'list-clear':
           state.filters.uploaderId = null;
           state.filters.minLength = null;
@@ -275,13 +361,15 @@ export async function handleList(interaction) {
             pageCount,
             viewScope,
             guild,
-            filters: state.filters
+            filters: state.filters,
+            uploaders
           })
         ],
         components: buildComponents({
           page: state.page,
           pageCount,
           filters: state.filters,
+          uploaders,
           disabled: true
         })
       });
