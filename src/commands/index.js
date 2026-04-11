@@ -1,4 +1,4 @@
-import { SlashCommandBuilder } from 'discord.js';
+import { SlashCommandBuilder, ChannelType } from 'discord.js';
 import { SETTING_KEYS } from '../settings.js';
 
 // 🔒 marker on subcommand descriptions for admin-gated commands. Discord
@@ -50,6 +50,12 @@ function buildSlashCommand(name) {
               .setDescription('Sound name')
               .setRequired(true)
               .setAutocomplete(true)
+          )
+          .addChannelOption(o =>
+            o
+              .setName('channel')
+              .setDescription('Voice channel to play in (defaults to your current channel)')
+              .addChannelTypes(ChannelType.GuildVoice)
           )
       )
     )

@@ -10,6 +10,30 @@ import { canonicalize, displayName } from '../names.js';
 import { logger } from '../logger.js';
 import { replyFlags } from './visibility.js';
 
+// Remote-play cooldown (non-admins only). Firing /sb play with a channel
+// option you're not already sitting in burns a 30s cooldown, so the bot
+// can't be yanked around the server repeatedly. Playing into the channel
+// you're already in is free — and once you walk into the target channel,
+// the check below stops applying because `isRemotePlay` flips to false.
+const REMOTE_COOLDOWN_MS = 30_000;
+const remoteCooldowns = new Map(); // `${guildId}:${userId}` -> expiryTs
+
+function cooldownRemainingMs(guildId, userId) {
+  const key = `${guildId}:${userId}`;
+  const expiry = remoteCooldowns.get(key);
+  if (!expiry) return 0;
+  const remaining = expiry - Date.now();
+  if (remaining <= 0) {
+    remoteCooldowns.delete(key);
+    return 0;
+  }
+  return remaining;
+}
+
+function armCooldown(guildId, userId) {
+  remoteCooldowns.set(`${guildId}:${userId}`, Date.now() + REMOTE_COOLDOWN_MS);
+}
+
 export async function handlePlay(interaction) {
   const rawName = interaction.options.getString('name');
   const sound = queries.getByMatch.get(canonicalize(rawName));
@@ -38,20 +62,42 @@ export async function handlePlay(interaction) {
 
   const member = interaction.member;
   const userVoice = member.voice?.channel;
+  const providedChannel = interaction.options.getChannel('channel');
 
-  if (!userVoice) {
+  // --- Resolve target voice channel ----------------------------------------
+  // Provided channel wins if present; otherwise fall back to the member's
+  // current VC. Discord's channel picker already restricts the list to
+  // channels the user can view, so we don't have to re-filter it — we only
+  // double-check Connect, which Discord doesn't enforce at pick time.
+  let targetChannel;
+  if (providedChannel) {
+    const userPerms = providedChannel.permissionsFor(member);
+    if (
+      !userPerms?.has(PermissionFlagsBits.ViewChannel) ||
+      !userPerms?.has(PermissionFlagsBits.Connect)
+    ) {
+      return interaction.reply({
+        content: `You don't have permission to join <#${providedChannel.id}>.`,
+        flags: replyFlags(interaction)
+      });
+    }
+    targetChannel = providedChannel;
+  } else if (userVoice) {
+    targetChannel = userVoice;
+  } else {
     return interaction.reply({
-      content: 'You need to be in a voice channel to play sounds.',
+      content:
+        'You need to be in a voice channel, or pass `channel:` to pick one for me to join.',
       flags: replyFlags(interaction)
     });
   }
 
   // Bot needs permission to speak in the target channel
   const me = await interaction.guild.members.fetchMe();
-  const perms = userVoice.permissionsFor(me);
+  const perms = targetChannel.permissionsFor(me);
   if (!perms?.has(PermissionFlagsBits.Connect) || !perms?.has(PermissionFlagsBits.Speak)) {
     return interaction.reply({
-      content: `I don't have permission to connect or speak in <#${userVoice.id}>.`,
+      content: `I don't have permission to connect or speak in <#${targetChannel.id}>.`,
       flags: replyFlags(interaction)
     });
   }
@@ -59,13 +105,31 @@ export async function handlePlay(interaction) {
   const admin = isAdmin(interaction.guild, member.id);
   const session = getSession(interaction.guild.id);
 
+  // --- Remote-play cooldown (non-admins) -----------------------------------
+  // Remote = target channel isn't the one the user is currently sitting in.
+  // If they're already in the target channel, no cooldown applies, so the
+  // user can always bypass an existing cooldown by moving into the channel.
+  const isRemotePlay = !userVoice || userVoice.id !== targetChannel.id;
+  if (isRemotePlay && !admin) {
+    const remaining = cooldownRemainingMs(interaction.guild.id, member.id);
+    if (remaining > 0) {
+      const seconds = Math.ceil(remaining / 1000);
+      return interaction.reply({
+        content:
+          `⏳ Remote-play cooldown: **${seconds}s** left. ` +
+          `Join <#${targetChannel.id}> to bypass it, or wait it out.`,
+        flags: replyFlags(interaction)
+      });
+    }
+  }
+
   // --- Channel lock rules ---------------------------------------------------
-  if (session && session.channelId !== userVoice.id) {
+  if (session && session.channelId !== targetChannel.id) {
     if (admin) {
       logger.info('admin overriding channel lock', {
         guildId: interaction.guild.id,
         from: session.channelId,
-        to: userVoice.id,
+        to: targetChannel.id,
         userId: member.id
       });
       stopSession(interaction.guild.id, 'admin-override');
@@ -100,16 +164,23 @@ export async function handlePlay(interaction) {
   try {
     const result = await playSound(
       interaction.guild,
-      userVoice,
+      targetChannel,
       filePath,
       sound.name,
       member.id
     );
 
+    // Only arm the cooldown once the play actually succeeds, so a failed
+    // attempt doesn't lock the user out for 30s for nothing.
+    if (isRemotePlay && !admin) {
+      armCooldown(interaction.guild.id, member.id);
+    }
+
     const display = displayName(sound.name);
     const suffix = result.overlapping > 1 ? ` (${result.overlapping} sounds overlapping)` : '';
+    const remoteNote = isRemotePlay ? ` in <#${targetChannel.id}>` : '';
     await interaction.editReply({
-      content: `▶ Playing **${display}**${suffix}`
+      content: `▶ Playing **${display}**${remoteNote}${suffix}`
     });
   } catch (err) {
     logger.error('play failed', {

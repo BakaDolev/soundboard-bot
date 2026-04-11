@@ -11,7 +11,7 @@ Runs as a Docker container on Unraid (or anywhere Docker runs).
 ## Features
 
 - `/sb upload` — attach any audio/video file, the bot auto-converts to Opus OGG (128kbps, 48kHz stereo). Names accept spaces, hyphens, or underscores; the bot stores them in kebab-case and displays them with spaces.
-- `/sb play` — plays a sound; multiple sounds overlap in a live mix
+- `/sb play name [channel]` — plays a sound; multiple sounds overlap in a live mix. Optional `channel:` lets you summon the bot to any voice channel you can see (Discord filters the picker to channels you have view access to). Non-admins get a **30s remote-play cooldown** for sending the bot to a channel they're not currently sitting in — playing into the channel you're already in is always free, and joining the target channel bypasses an active cooldown.
 - `/sb edit name new_name` — uploader (or owner) renames a sound
 - `/sb cut name start end` — uploader (or owner) trims a sound in place. Times accept `MM:SS`, `HH:MM:SS`, or plain seconds.
 - `/sb delete` 🔒 — uploader, admin of the source server, or owner can delete
