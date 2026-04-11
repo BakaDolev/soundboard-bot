@@ -78,7 +78,7 @@
 
 ## Git
 
-- **Commit after every logical change** — commit with a clear message and push immediately. Group related edits into one commit.
+- **Commit after every logical change** — commit with a clear message and **push immediately** in the same step. Group related edits into one commit. Default behaviour is commit **and** push together, not commit alone; only skip the push if the user explicitly says so.
 - **Commit messages:** Use conventional commits — `feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `test:`. Short, imperative subject line.
 - Suggest splitting multi-concern changes into separate commits.
 
