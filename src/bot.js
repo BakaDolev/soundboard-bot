@@ -1,4 +1,4 @@
-import { Client, Events, GatewayIntentBits, MessageFlags } from 'discord.js';
+import { Client, Events, GatewayIntentBits, MessageFlags, ActivityType } from 'discord.js';
 import { logger } from './logger.js';
 import { queries } from './db/database.js';
 import { getSetting, getSettingDef } from './settings.js';
@@ -41,6 +41,7 @@ export function createBot() {
       id: c.user.id,
       guilds: c.guilds.cache.size
     });
+    c.user.setActivity('nothing', { type: ActivityType.Playing });
   });
 
   client.on(Events.InteractionCreate, async interaction => {

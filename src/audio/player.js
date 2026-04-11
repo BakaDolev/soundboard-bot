@@ -7,6 +7,7 @@ import {
   entersState,
   NoSubscriberBehavior
 } from '@discordjs/voice';
+import { ActivityType } from 'discord.js';
 import { Mixer } from './mixer.js';
 import { logger } from '../logger.js';
 
@@ -18,10 +19,38 @@ import { logger } from '../logger.js';
  *   cleanupScheduled,
  *   pausedAt: number|null,
  *   pausedBy: string|null,
- *   pauseTimer: NodeJS.Timeout|null
+ *   pauseTimer: NodeJS.Timeout|null,
+ *   client: Client
  * }
  */
 const sessions = new Map();
+
+function updateActivity(client) {
+  if (!client || !client.user) return;
+
+  let latestSound = null;
+  let latestTime = 0;
+  let activeChannelId = null;
+
+  for (const session of sessions.values()) {
+    if (session.pausedAt) continue;
+    for (const entry of session.playing.values()) {
+      if (entry.startedAt > latestTime) {
+        latestTime = entry.startedAt;
+        latestSound = entry.name;
+        activeChannelId = session.channelId;
+      }
+    }
+  }
+
+  if (latestSound && activeChannelId) {
+    const channel = client.channels.cache.get(activeChannelId);
+    const channelName = channel ? channel.name : 'Unknown';
+    client.user.setActivity(`${latestSound} in ${channelName}`, { type: ActivityType.Playing });
+  } else {
+    client.user.setActivity('nothing', { type: ActivityType.Playing });
+  }
+}
 
 // Idle disconnect after this long while paused.
 const PAUSE_IDLE_MS = 2 * 60 * 1000;
@@ -47,6 +76,7 @@ export async function playSound(guild, voiceChannel, soundFilePath, soundName, u
     const sourceId = session.mixer.addSource(soundFilePath, () => {
       session.playing.delete(sourceId);
       logger.ok('sound finished', { guildId: guild.id, sound: soundName, userId });
+      updateActivity(guild.client);
     });
 
     if (sourceId === null) {
@@ -65,6 +95,8 @@ export async function playSound(guild, voiceChannel, soundFilePath, soundName, u
       userId,
       overlapping: session.playing.size
     });
+
+    updateActivity(guild.client);
 
     resolve({ sourceId, overlapping: session.playing.size });
   });
@@ -111,7 +143,8 @@ async function createSession(guild, voiceChannel) {
     cleanupScheduled: false,
     pausedAt: null,
     pausedBy: null,
-    pauseTimer: null
+    pauseTimer: null,
+    client: guild.client
   };
   sessions.set(guild.id, session);
 
@@ -191,6 +224,7 @@ export function pauseSession(guildId, byUserId) {
   }, PAUSE_IDLE_MS);
 
   logger.ok('session paused', { guildId, by: byUserId });
+  updateActivity(session.client);
   return true;
 }
 
@@ -217,6 +251,7 @@ export function resumeSession(guildId) {
   session.pausedAt = null;
   session.pausedBy = null;
   logger.ok('session resumed', { guildId });
+  updateActivity(session.client);
   return true;
 }
 
@@ -260,4 +295,5 @@ function cleanupSession(guildId, reason) {
   }
 
   logger.info('voice session ended', { guildId, reason });
+  updateActivity(session.client);
 }
