@@ -32,10 +32,10 @@ function buildSlashCommand(name) {
               .setDescription("Sound name (1-32 chars; spaces, hyphens, underscores, all are fine)")
               .setRequired(true)
               .setMinLength(1)
-              .setMaxLength(100)
+              .setMaxLength(32)
           )
           .addAttachmentOption(o =>
-            o.setName('file').setDescription('Audio or video file').setRequired(true)
+            o.setName('file').setDescription('Audio or video file').setRequired(false)
           )
           .addStringOption(o =>
             o

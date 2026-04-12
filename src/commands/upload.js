@@ -16,7 +16,6 @@ import { getSetting } from '../settings.js';
 import { storeName, displayName, canonicalize } from '../names.js';
 import { logger } from '../logger.js';
 import { replyFlags } from './visibility.js';
-import { error } from 'node:console';
 
 // Hardcoded absolute ceiling — applies even to admins.
 const ADMIN_HARD_CAP_MB = 200;
@@ -25,6 +24,7 @@ const ADMIN_HARD_CAP_BYTES = ADMIN_HARD_CAP_MB * 1024 * 1024;
 const USER_INPUT_CAP_BYTES = 100 * 1024 * 1024;
 
 const YOUTUBE_REGEX = /^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?.*v=|youtu\.be\/)[\w-]+/;
+  /^(https?:\/\/)?((?:www\.|m\.|music\.)?youtube\.com\/(watch\?.*v=|shorts\/)|youtu\.be\/)[\w-]+/;
 
 export async function handleUpload(interaction) {
   await interaction.deferReply({ flags: replyFlags(interaction) });
@@ -102,11 +102,11 @@ export async function handleUpload(interaction) {
   // Admins: up to the hardcoded 200MB absolute ceiling.
   // Users: up to USER_INPUT_CAP_BYTES (100MB).
   if (attachment) {
-    const maxInputBytes = admin ? ADMIN_HARD_CAP_BYTES : USER_INPUT_CAP_BYTES;
+    const maxInputBytes = owner ? ADMIN_HARD_CAP_BYTES : admin ? ADMIN_HARD_CAP_BYTES : USER_INPUT_CAP_BYTES;
     if (attachment.size > maxInputBytes) {
       return interaction.editReply(
         `Input file too large (${formatBytes(attachment.size)}). Max for ${
-          admin ? 'admins' : 'users'
+          owner || admin ? 'admins' : 'users'
         } is ${formatBytes(maxInputBytes)}.`
       );
     }
@@ -133,7 +133,11 @@ export async function handleUpload(interaction) {
       const buffer = Buffer.from(await res.arrayBuffer());
       fs.writeFileSync(tempInput, buffer);
     } else {
-      tempInput = await downloadYoutube(youtubeUrl, tempDir, tempId);
+      // Pass caps into yt-dlp so it rejects oversized/overlong videos
+      // before wasting bandwidth downloading them.
+      const maxSizeBytes = owner ? ADMIN_HARD_CAP_BYTES : admin ? ADMIN_HARD_CAP_BYTES : USER_INPUT_CAP_BYTES;
+      const durationCapSeconds = owner || admin ? null : maxDurationSeconds;
+      tempInput = await downloadYoutube(youtubeUrl, tempDir, tempId, maxSizeBytes, durationCapSeconds);
     }
    
 
@@ -212,7 +216,8 @@ export async function handleUpload(interaction) {
       size: stats.size,
       duration,
       asAdmin: admin,
-      isPrivate
+      isPrivate,
+      source: youtubeUrl ? 'youtube' : 'file'
     });
 
     const display = displayName(name);
@@ -242,15 +247,30 @@ export async function handleUpload(interaction) {
 
 
 /**
- * Download audio from YouTube using yt-dlp
- * It returns the path to the downloaded temp file
+ * Download audio from a YouTube URL using yt-dlp.
+ * maxSizeBytes and durationCapSeconds are enforced by yt-dlp before the
+ * download completes, so we don't pull a 3-hour video only to reject it.
+ * Returns the path to the downloaded temp file.
  */
-function downloadYouTube(url, tempDir, tempId) {
+function downloadYouTube(url, tempDir, tempId, maxSizeBytes, durationCapSeconds) {
   return new Promise((resolve, reject) => {
     const outputTemplate = path.join(tempDir, `${tempId}.%(ext)s`);
-    const args = ['--no-playlist', '--format', 'bestaudio', '--output', outputTemplate, url];
 
-    logger.info('yt-dlp download starting', { url });
+    const args = [
+      '--no-playlist',
+      '--format', 'bestaudio',
+      '--max-filesize', `${maxSizeBytes}`,
+      '--output', outputTemplate
+    ];
+
+    // Reject videos that exceed the duration cap before downloading.
+    if (durationCapSeconds != null) {
+      args.push('--match-filter', `duration <= ${durationCapSeconds}`);
+    }
+
+    args.push(url);
+
+    logger.info('yt-dlp download starting', { url, maxSizeBytes, durationCapSeconds });
     const proc = spawn('yt-dlp', args);
 
     let stderr = '';
@@ -258,7 +278,7 @@ function downloadYouTube(url, tempDir, tempId) {
 
     proc.on('error', () => {
       const e = new Error('yt-dlp not available');
-      e.userMessage = "yt-dlp is not installed on this bot. Contact your administrator. Or don't, I'm just a message.";
+      e.userMessage = 'yt-dlp is not installed on this bot. Contact your admin.';
       reject(e);
     });
 
@@ -266,15 +286,26 @@ function downloadYouTube(url, tempDir, tempId) {
       if (code !== 0) {
         logger.fail('yt-dlp failed', { code, stderr: stderr.slice(0, 500) });
         const e = new Error(`yt-dlp exited with code ${code}`);
-        e.userMessage = 'Could not download that YouTube video. It may be private, age-restricted, or unavailable, but I know that you are retarded ;>';
+        // yt-dlp exits 1 for --match-filter misses and --max-filesize exceeded.
+        const tooLong = stderr.includes('does not pass filter') || stderr.includes('duration');
+        const tooBig  = stderr.includes('File is larger than max-filesize');
+        if (tooLong) {
+          e.userMessage = `That video is too long. Max duration is **${durationCapSeconds}s**.`;
+        } else if (tooBig) {
+          e.userMessage = `That video's audio track is too large to download.`;
+        } else {
+          e.userMessage = 'Could not download that YouTube video. It may be private, age-restricted, or unavailable.';
+        }
         return reject(e);
       }
+
       const downloaded = fs.readdirSync(tempDir).find(f => f.startsWith(tempId));
       if (!downloaded) {
         const e = new Error('yt-dlp finished but no output file found');
-        e.userMessage = 'Downloaded appeared to succeed but no audio file was produced, oops...';
+        e.userMessage = 'Download appeared to succeed but no audio file was produced.';
         return reject(e);
       }
+
       logger.ok('yt-dlp download complete', { file: downloaded });
       resolve(path.join(tempDir, downloaded));
     });
