@@ -23,6 +23,7 @@ A Discord soundboard bot that lets users upload short audio clips, play them bac
 | Bot framework | discord.js v14 |
 | Voice | @discordjs/voice |
 | Audio processing | ffmpeg + ffprobe (spawned as child processes) |
+| YouTube downloads | yt-dlp (installed in Docker image) |
 | Database | better-sqlite3 |
 | Container | Docker (multi-stage) on Unraid |
 
@@ -67,7 +68,7 @@ Every command is registered under both `/sb` and `/soundboard`.
 
 | Command | Description |
 |---|---|
-| `/sb upload file:<attachment> name:<text>` | Upload audio/video. Names accept spaces/hyphens/underscores; stored kebab-case, displayed with spaces. Tag (global vs private) follows the server's `upload_scope`. |
+| `/sb upload name:<text> [file:<attachment>] [youtube_url:<text>]` | Upload audio/video file or YouTube link. Exactly one source required. Names accept spaces/hyphens/underscores; stored kebab-case, displayed with spaces. Tag (global vs private) follows the server's `upload_scope`. |
 | `/sb play name:<text>` | Play a sound. Overlaps current playback if same channel. Blocked cross-channel for non-admins. Visibility honours `view_scope`. |
 | `/sb edit name:<text> new_name:<text>` | Rename a sound. Uploader or owner only. |
 | `/sb cut name:<text> start:<text> end:<text>` | Trim a sound in place. Uploader or owner only. Times accept `MM:SS`, `HH:MM:SS`, or seconds. |
