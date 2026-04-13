@@ -15,7 +15,7 @@ const SPAM_DURATION_MS = 10000;
 
 // Concurrent ffmpeg source cap. Starting too many decoders at once can cause
 // most of them to miss their startup window and only be audible near the end.
-const SPAM_MAX_SOUNDS = 15;
+const SPAM_MAX_SOUNDS = 100;
 const SPAM_SPAWN_DELAY_MS = 75;
 
 function sleep(ms) {
@@ -90,8 +90,8 @@ export async function handleSpam(interaction) {
 
   await interaction.deferReply({ flags: replyFlags(interaction) });
 
-  const sounds = shuffle(allSounds.slice()).slice(0, SPAM_MAX_SOUNDS);
-  const skipped = allSounds.length - sounds.length;
+  const spamPoolSize = Math.min(getSetting(guild.id, 'spam_pool_size'), SPAM_MAX_SOUNDS);
+  const sounds = shuffle(allSounds.slice()).slice(0, spamPoolSize);
 
   let started = 0;
   let missing = 0;
@@ -155,17 +155,17 @@ export async function handleSpam(interaction) {
     started,
     missing,
     failed,
-    skipped,
+    spamPoolSize,
+    available: allSounds.length,
     durationMs: SPAM_DURATION_MS
   });
 
   const noteParts = [];
   if (missing > 0) noteParts.push(`${missing} missing from disk`);
   if (failed > 0) noteParts.push(`${failed} failed`);
-  if (skipped > 0) noteParts.push(`${skipped} not selected (pool capped at ${SPAM_MAX_SOUNDS})`);
   const note = noteParts.length ? ` *(${noteParts.join(', ')})*` : '';
 
   return interaction.editReply(
-    `💣 Spamming **${started}** sounds for **${SPAM_DURATION_MS / 1000}s**${note}.`
+    `💣 Spamming **${started}** random sounds for **${SPAM_DURATION_MS / 1000}s**${note}.`
   );
 }

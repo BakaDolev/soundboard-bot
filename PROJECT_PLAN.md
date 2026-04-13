@@ -57,6 +57,7 @@ Env values are defaults; most are overridable per server via `/sb settings`. Sto
 | Max duration | 120s | `MAX_DURATION_SECONDS` | `max_duration_seconds` |
 | Max file size (post-conversion) | 10MB | `MAX_FILE_SIZE_MB` | `max_file_size_mb` |
 | Max uploads per user | 20 | `MAX_SOUNDS_PER_USER` | `max_sounds_per_user` |
+| Spam selection size | 15 sounds | n/a | `spam_pool_size` |
 | Storage soft cap (warn) | 1GB → DM admins | `STORAGE_WARN_GB` | `storage_warn_gb_override` (owner only) |
 | Storage hard cap (block) | 5GB → refuse uploads | `STORAGE_HARD_GB` | `storage_hard_gb_override` (owner only) |
 
@@ -222,7 +223,7 @@ Admins are also global — the bot is designed for a single deployment where adm
 - Added `docker-compose.prod.yml` for pulling pre-built images on Unraid.
 
 ### 2026-04-10 — Per-guild rework + edit/cut/pause
-- Per-guild settings layer (`guild_settings` table + `src/settings.js`) with env values as defaults. Settable keys: `max_file_size_mb`, `max_duration_seconds`, `max_sounds_per_user`, `upload_scope`, `view_scope`, `admin_mode`, `storage_warn_gb_override`, `storage_hard_gb_override`. The two storage overrides and `admin_mode` are owner-only.
+- Per-guild settings layer (`guild_settings` table + `src/settings.js`) with env values as defaults. Settable keys: `max_file_size_mb`, `max_duration_seconds`, `max_sounds_per_user`, `spam_pool_size`, `upload_scope`, `view_scope`, `admin_mode`, `storage_warn_gb_override`, `storage_hard_gb_override`. The two storage overrides and `admin_mode` are owner-only.
 - Admin model is now fully per-guild. Old global `admins` table is left behind (read-only) and superseded by `bot_admins (guild_id, user_id, …)`. New `isAdmin(guild, userId)` dispatches on the guild's `admin_mode` between bot-admin list and Discord `ADMINISTRATOR` perm. Owner is implicit admin everywhere and the only role that can change `admin_mode` / storage overrides.
 - Two independent visibility settings: `upload_scope` (`global`/`private`) tags new uploads; `view_scope` (`global`/`guild`) controls what `/sb list`, autocomplete, and `/sb play` see. Sounds keep the tag they were uploaded with.
 - Storage cap override: when set on a guild it **fully replaces** the env hard/warn cap for that guild's uploads. Both env and overrides are clamped to an absolute 10 GB ceiling (`STORAGE_ABSOLUTE_CEILING_GB`). Float decimals supported (`0.5`, `1.25`, etc.).

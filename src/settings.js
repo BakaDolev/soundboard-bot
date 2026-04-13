@@ -35,6 +35,12 @@ const SETTING_DEFS = {
     validate: v => Number.isInteger(v) && v > 0,
     describe: 'Per-user upload quota for non-admins.'
   },
+  spam_pool_size: {
+    type: 'int',
+    default: () => 15,
+    validate: v => Number.isInteger(v) && v > 0 && v <= 100,
+    describe: 'How many random sounds `/sb spam` picks from this server\'s visible pool (max 100).'
+  },
   upload_scope: {
     type: 'enum',
     options: [

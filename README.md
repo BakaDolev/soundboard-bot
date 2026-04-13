@@ -20,7 +20,7 @@ Runs as a Docker container on Unraid (or anywhere Docker runs).
 - `/sb pause` / `/sb resume` — initiator and admins pause/resume instantly; other VC members can vote. Bot disconnects 2 minutes after a pause if not resumed.
 - `/sb storage` — storage usage bar, largest sounds, effective per-server limits
 - `/sb admin add @user`, `/sb admin remove @user`, `/sb admin list` 🔒 — manage **per-server** bot admins
-- `/sb settings view|set|unset` 🔒 — configure per-server limits and toggles
+- `/sb settings view|set|unset` 🔒 — configure per-server limits and toggles, including `/sb spam` pool size
 - Autocomplete on every sound-name option, with loose matching across spaces/hyphens/underscores
 - Every subcommand takes an optional `visibility:true` flag — replies are private by default, pass `visibility:true` to post the reply publicly in the channel (vote messages for `/sb stop` / `/sb pause` / `/sb resume` are always public since others need to click the vote button)
 - `/sb settings set` autocompletes the `value` field based on the chosen `key` — enum settings (`upload_scope`, `view_scope`, `admin_mode`) list each valid value with a description; numeric settings surface the current default
@@ -59,6 +59,7 @@ Admins can:
 | `max_file_size_mb` | `MAX_FILE_SIZE_MB` env (10) | no |
 | `max_duration_seconds` | `MAX_DURATION_SECONDS` env (120) | no |
 | `max_sounds_per_user` | `MAX_SOUNDS_PER_USER` env (20) | no |
+| `spam_pool_size` | `15` | no |
 | `upload_scope` (`global`/`private`) | `global` | no |
 | `view_scope` (`global`/`guild`) | `global` | no |
 | `admin_mode` (`bot`/`server`) | `bot` | **yes** |
@@ -66,6 +67,8 @@ Admins can:
 | `storage_hard_gb_override` | `STORAGE_HARD_GB` env (5), max 10 | **yes** |
 
 `upload_scope` controls how new uploads from the server are tagged. `view_scope` controls what `/sb list`, autocomplete, and `/sb play` show in that server: `global` shows all public sounds; `guild` shows only sounds uploaded in that server (regardless of how they were tagged at upload time). Sounds keep their original tag when settings change.
+
+`spam_pool_size` controls how many random visible sounds `/sb spam` tries to launch for that server. The command still uses its fixed 10-second window and startup staggering; this setting only changes how many sounds are chosen.
 
 ---
 
