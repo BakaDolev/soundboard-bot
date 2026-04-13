@@ -33,8 +33,16 @@ export async function handleCut(interaction) {
   const durationLabel =
     `**${displayName(sound.name)}** is currently **${originalDuration.toFixed(3)}s** long.`;
 
-  const start = parseTimeString(interaction.options.getString('start', true));
-  const end = parseTimeString(interaction.options.getString('end', true));
+  const rawStart = interaction.options.getString('start');
+  const rawEnd = interaction.options.getString('end');
+
+  if (!rawStart && !rawEnd) {
+    return interaction.editReply(
+      `${durationLabel}\nProvide at least \`start\` or \`end\`. Use seconds like \`12.500\` or \`0.250\`, or \`MM:SS\` / \`HH:MM:SS\`.`
+    );
+  }
+  const start = rawStart ? parseTimeString(rawStart) : 0;
+  const end = rawEnd ? parseTimeString(rawEnd) : sound.duration_seconds;
   if (start === null || end === null) {
     return interaction.editReply(
       `${durationLabel}\nUse seconds like \`12.500\` or \`0.250\`, or \`MM:SS\` / \`HH:MM:SS\`.`

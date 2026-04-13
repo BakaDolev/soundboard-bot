@@ -102,11 +102,10 @@ function buildSlashCommand(name) {
           .addStringOption(o =>
             o
               .setName('start')
-              .setDescription('Start time (supports seconds like 12.500 or MM:SS)')
-              .setRequired(true)
+              .setDescription('Optional start time (defaults to 0; supports 12.500 or MM:SS)')
           )
           .addStringOption(o =>
-            o.setName('end').setDescription('End time (supports seconds like 45.250 or MM:SS)').setRequired(true)
+            o.setName('end').setDescription('Optional end time (defaults to full length; supports 45.250 or MM:SS)')
           )
       )
     )
