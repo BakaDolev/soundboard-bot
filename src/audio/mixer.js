@@ -33,19 +33,22 @@ export class Mixer extends Readable {
    * `onFinish` fires when this specific sound is done playing (success or error).
    * Returns a numeric source id.
    */
-  addSource(inputPath, onFinish) {
+  addSource(inputPath, onFinish, options = {}) {
     if (this.destroyed_) return null;
 
     const id = this.nextId++;
-    const proc = spawn('ffmpeg', [
-      '-i', inputPath,
-      '-vn',
+    const args = ['-i', inputPath, '-vn'];
+    if (Number.isFinite(options.maxDurationSeconds) && options.maxDurationSeconds > 0) {
+      args.push('-t', String(options.maxDurationSeconds));
+    }
+    args.push(
       '-f', 's16le',
       '-ar', String(SAMPLE_RATE),
       '-ac', String(CHANNELS),
       '-loglevel', 'error',
       '-'
-    ], { stdio: ['ignore', 'pipe', 'pipe'] });
+    );
+    const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
 
     const source = {
       id,

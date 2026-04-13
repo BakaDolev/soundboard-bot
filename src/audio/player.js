@@ -128,7 +128,7 @@ export function getSession(guildId) {
  * already validated that (either same channel, or admin override). Admin
  * override should call stopSession(guildId) first, then call playSound again.
  */
-export async function playSound(guild, voiceChannel, soundFilePath, soundName, userId) {
+export async function playSound(guild, voiceChannel, soundFilePath, soundName, userId, options = {}) {
   let session = sessions.get(guild.id);
 
   if (!session) {
@@ -140,7 +140,7 @@ export async function playSound(guild, voiceChannel, soundFilePath, soundName, u
       session.playing.delete(sourceId);
       logger.ok('sound finished', { guildId: guild.id, sound: soundName, userId });
       updateActivity(guild.client);
-    });
+    }, options);
 
     if (sourceId === null) {
       return reject(new Error('Mixer is destroyed'));

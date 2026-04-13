@@ -108,7 +108,9 @@ export async function handleSpam(interaction) {
       continue;
     }
     try {
-      await playSound(guild, voiceChannel, filePath, sound.name, member.id);
+      await playSound(guild, voiceChannel, filePath, sound.name, member.id, {
+        maxDurationSeconds: SPAM_DURATION_MS / 1000
+      });
       started++;
     } catch (err) {
       failed++;
