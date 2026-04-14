@@ -27,7 +27,7 @@ export async function handlePause(interaction) {
   }
   if (isPaused(guild.id)) {
     return interaction.reply({
-      content: 'Playback is already paused. Use `/sb resume` to continue.',
+      content: 'Playback is already paused. Use `/sb resume` to continue. Or if you\'re just trying to be a pain in the ass, you can always `/sb stop` it. Probably, I dunno I never tried to shut meself up but please just resume it ;3',
       flags: replyFlags(interaction)
     });
   }

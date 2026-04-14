@@ -37,7 +37,7 @@ export async function handleDelete(interaction) {
 
   if (!allowed) {
     return interaction.reply({
-      content: `You can only delete sounds you uploaded. **${displayName(sound.name)}** was uploaded by <@${sound.uploader_id}>.`,
+      content: `You can only delete sounds you uploaded. **${displayName(sound.name)}** was uploaded by <@${sound.uploader_id}>. If you think this is a mistake, well, not my problem! ;3`,
       flags: replyFlags(interaction),
       allowedMentions: { users: [] }
     });

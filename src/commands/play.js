@@ -55,7 +55,7 @@ export async function handlePlay(interaction) {
       : sound.is_private === 0;
   if (!visible) {
     return interaction.reply({
-      content: `**${displayName(sound.name)}** isn't available in this server.`,
+      content: `**${displayName(sound.name)}** isn't available in this server ya dumwit! What are you trying to do, hack the planet??`,
       flags: replyFlags(interaction)
     });
   }
@@ -87,7 +87,7 @@ export async function handlePlay(interaction) {
   } else {
     return interaction.reply({
       content:
-        'You need to be in a voice channel, or pass `channel:` to pick one for me to join.',
+        'You need to be in a voice channel, or pass `channel:` to pick one for me to join you know? I can\'t just read your mind, that would be crazy.',
       flags: replyFlags(interaction)
     });
   }
@@ -97,7 +97,7 @@ export async function handlePlay(interaction) {
   const perms = targetChannel.permissionsFor(me);
   if (!perms?.has(PermissionFlagsBits.Connect) || !perms?.has(PermissionFlagsBits.Speak)) {
     return interaction.reply({
-      content: `I don't have permission to connect or speak in <#${targetChannel.id}>.`,
+      content: `I don't have permission to connect or speak in <#${targetChannel.id}> my dude (or lass idk can't see your gender lmao). Fix that problem and then maybe I'll want to join you.`,
       flags: replyFlags(interaction)
     });
   }
@@ -117,7 +117,7 @@ export async function handlePlay(interaction) {
       return interaction.reply({
         content:
           `⏳ Remote-play cooldown: **${seconds}s** left. ` +
-          `Join <#${targetChannel.id}> to bypass it, or wait it out.`,
+          `Join <#${targetChannel.id}> to bypass it, or wait it out, ya impatient fuck!`,
         flags: replyFlags(interaction)
       });
     }
@@ -137,7 +137,7 @@ export async function handlePlay(interaction) {
       await new Promise(resolve => setTimeout(resolve, 300));
     } else {
       return interaction.reply({
-        content: `🔒 I'm currently playing in <#${session.channelId}>. Wait for it to finish or ask an admin.`,
+        content: `🔒 I'm currently playing in <#${session.channelId}>. Wait for it to finish or ask an admin (Admins aren't gonna help you though lmao).`,
         flags: replyFlags(interaction)
       });
     }
@@ -151,7 +151,7 @@ export async function handlePlay(interaction) {
       filename: sound.filename
     });
     return interaction.reply({
-      content: `The file for **${sound.name}** is missing from disk. It may have been deleted manually.`,
+      content: `The file for **${sound.name}** is missing from disk. It may have been deleted manually ya dingus!`,
       flags: replyFlags(interaction)
     });
   }
@@ -189,7 +189,7 @@ export async function handlePlay(interaction) {
       err: err.message
     });
     await interaction.editReply({
-      content: `Failed to play **${displayName(sound.name)}**: ${err.message}`
+      content: `Failed to play **${displayName(sound.name)}**: ${err.message}. Oopsie woopsie!`
     });
   }
 }

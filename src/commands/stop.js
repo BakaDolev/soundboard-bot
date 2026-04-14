@@ -13,7 +13,7 @@ export async function handleStop(interaction) {
   const session = getSession(guild.id);
   if (!session) {
     return interaction.reply({
-      content: 'Nothing is playing right now.',
+      content: 'Nothing is playing right now, so there\'s nothing to stop! Why don\'t you try playing a sound first, genius?',
       flags: replyFlags(interaction)
     });
   }
@@ -34,7 +34,7 @@ export async function handleStop(interaction) {
   if (!voiceChannel) {
     stopSession(guild.id, 'channel-gone');
     return interaction.reply({
-      content: 'Voice channel no longer exists. Playback stopped.',
+      content: 'Voice channel no longer exists. Playback stopped. Rude.',
       flags: replyFlags(interaction)
     });
   }

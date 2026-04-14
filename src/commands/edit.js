@@ -21,7 +21,7 @@ export async function handleEdit(interaction) {
   const isUploader = sound.uploader_id === actor;
   if (!isUploader && !isOwner(actor)) {
     return interaction.reply({
-      content: `You can only rename sounds you uploaded. **${displayName(sound.name)}** was uploaded by <@${sound.uploader_id}>.`,
+      content: `You can only rename sounds you uploaded. **${displayName(sound.name)}** was uploaded by <@${sound.uploader_id}> not you, silly!`,
       flags: replyFlags(interaction),
       allowedMentions: { users: [] }
     });
@@ -41,7 +41,7 @@ export async function handleEdit(interaction) {
   const newCanonical = canonicalize(newName);
   if (newCanonical === sound.match_name) {
     return interaction.reply({
-      content: 'New name matches the existing one — nothing to change.',
+      content: 'New name matches the existing one — nothing to change. Try a different name, dummy!',
       flags: replyFlags(interaction)
     });
   }

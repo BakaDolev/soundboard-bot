@@ -38,13 +38,13 @@ export async function handleUpload(interaction) {
 
   // --- Must provide exactly one source -------------------------------------
   if (!attachment && !youtubeUrl) {
-    return interaction.editReply('You must provide either a **file** attachment or a **YouTube URL**.');
+    return interaction.editReply('You must provide either a **file** attachment or a **YouTube URL**, I\'m not a magician!');
   }
   if (attachment && youtubeUrl) {
-    return interaction.editReply('Provide either a file **or** a YouTube URL, not both.');
+    return interaction.editReply('Provide either a file **or** a YouTube URL, not both, what are you trying to do? Overload me??');
   }
   if (youtubeUrl && !YOUTUBE_REGEX.test(youtubeUrl)) {
-    return interaction.editReply("That doesn't look like a valid YouTube URL.");
+    return interaction.editReply("That doesn't look like a valid YouTube URL. So close though! I believe that you can find the right one if you try again!");
   }
 
   // --- Normalize & validate name -------------------------------------------
@@ -61,7 +61,7 @@ export async function handleUpload(interaction) {
   // Uniqueness check goes through the loose canonical form.
   if (queries.getByMatch.get(canonicalize(name))) {
     return interaction.editReply(
-      `A sound named **${displayName(name)}** already exists. Pick a different name.`
+      `A sound named **${displayName(name)}** already exists. Try to be more creative next time and pick a different name ;/`
     );
   }
 
@@ -76,7 +76,7 @@ export async function handleUpload(interaction) {
     const userCount = queries.countByUploader.get(interaction.user.id).count;
     if (userCount >= maxSoundsPerUser) {
       return interaction.editReply(
-        `You've reached the max of **${maxSoundsPerUser}** uploaded sounds. ` +
+        `You've reached the max of **${maxSoundsPerUser}** uploaded sounds. Brother don't you got a life outside of uploading soundboards???` +
           `Use \`/sb delete\` to remove some first.`
       );
     }
@@ -94,7 +94,7 @@ export async function handleUpload(interaction) {
     });
     return interaction.editReply(
       `🚫 Storage is full (**${formatBytes(totalBytes)}** / ${formatBytes(hardLimitBytes)} hard limit). ` +
-        `Delete some sounds before uploading.`
+        `Delete some sounds before uploading. Or... Just pray someone else deletes some sounds before you try again 🙏`
     );
   }
 
@@ -153,7 +153,7 @@ export async function handleUpload(interaction) {
     if (!admin && !owner && duration > maxDurationSeconds) {
       safeUnlink(tempInput);
       return interaction.editReply(
-        `Sound is too long: **${duration.toFixed(1)}s**. Max is **${maxDurationSeconds}s**.`
+        `Sound is too long: **${duration.toFixed(1)}s**. Max is **${maxDurationSeconds}s**. I ain't got all day to listen to this goofy goober ahh sound.`
       );
     }
 
@@ -237,7 +237,9 @@ export async function handleUpload(interaction) {
     safeUnlink(tempInput);
     if (outPath) safeUnlink(outPath);
     try {
-      await interaction.editReply(err.userMessage || 'Upload failed due to an unexpected error. Check the logs.');
+      const finalMessage = err.userMessage || "I may be a bit dumb... Upload failed due to an unexpected error. Check the logs ;>";
+
+      await ReplyInChunks(interaction, finalMessage);
     } catch (replyErr) {
       logger.error('failed to send upload error message', { err: replyErr.message });
     }
@@ -289,11 +291,32 @@ function downloadYouTube(url, tempDir, tempId, maxSizeBytes, durationCapSeconds)
         const tooLong = stderr.includes('does not pass filter') || stderr.includes('duration');
         const tooBig  = stderr.includes('File is larger than max-filesize');
         if (tooLong) {
-          e.userMessage = `That video is too long. Max duration is **${durationCapSeconds}s**.`;
+          e.userMessage = `That video is too long. Max duration is **${durationCapSeconds}s** btw, just incase you didn't know, or you know, didn't read the instructions. Or maybe you were just a bit ignorant about that thing but you know everyone is sometimes like this from time to time, esspecially me when someone uploads a big ahh file to me and it hurts me from the inside to try and convert it because the video is like 3 HOURS LONG LIKE COME ON YOU DONT NEED THIS ENTIRE THING AS A SOUNDBOARD. Though I do have to ask you, since, you know, probably no one asked you this today, how are you? How's life? How's the kids and the wife? Maybe husband or lover? Idk. Anyways I think I bantered for a very long time now and I think you had enough of reading all of this lmao, anyways. UPLOAD A SHORTER VIDEO YOU GOOFY GOOFER DUMWIT AHH CHICKEN BONE`;
         } else if (tooBig) {
           e.userMessage = `That video's audio track is too large to download.`;
         } else {
-          e.userMessage = 'Could not download that YouTube video. It may be private, age-restricted, or unavailable.';
+          e.userMessage = `## The Digital Void: A Tragedy in One Error Message
+          Ah, there it is. The "Could not download" message from me. It's not just a notification, it's a lifestyle. A tiny rectangular shrug from the universe. You pasted it expecting some sound effect or a 10 hour loop of a raccoon playing a pan flute, and instead, you've got the message of **Private! Age-Restricted!** or just Unavailable lol.
+          
+          ### 1. The "Private" Engima
+          When a video is "Private", it's the internet equivalent of seeing a "Do Not Enter" sign on a basement door that smells like sourdough and secrets. What's in there? Is it the lost footage of that one time a cat actually apologised? You'll never know. You are on the outside of the velvet rope, and the bouncer is an algorithm that doesn't take bribes ;(
+          
+          ### 2. The "Age-Restricted" Guardian
+          Ah, the gatekeeper of maturity. This error assumes that because you haven't logged in to prove you're older than idk, a child? A teenager? Your fragile mind cannot handle the intensity of... Whatever is behind that wall. A violent cooking show? The mating habits of scandalous sea cucumbers? The mystery only makes the hunger grow...
+          
+          ### 3. The "Unavailable" Abyss
+          "Unavailable" is the most passive-aggressive. It doesn't give a reason. It doesn't blame your age. It just... Isn't. It's the digital version of your dad saying *"Because I said so."* The video has transcended this plane. It has moved to a farmn upstate where all the deleted MySpace, Vines, Etc. live in peace.
+          
+          > "The best things in life are free, but the things you actually want to watch are usually region-locked or deleted by a copyright claim from a company that went bankrupt in 1994."
+          
+          **Why are you still reading?** You've realised I am actively helping you waste the time you *would* have spent getting another sound or watching a YouTube video. If it takes you 3 minutes to find the sound , you've already regained 45 seconds of your life here. You're welcome. Consider the **Entropy of the Link**:
+          * **0s:** High hopes.
+          * **1s:** The click. The spinning wheel of destiny.
+          * **2s:** The copying of the link to me, the bot.
+          * **10s:** Denial. You try again hoping it was a mistake on my side.
+          * **30s:** Acceptance. That soundboard was never meant for you (or the raccoon flute concert that we talked about).
+          
+          **Go forth and be unavailable.**`
         }
         return reject(e);
       }
@@ -309,6 +332,22 @@ function downloadYouTube(url, tempDir, tempId, maxSizeBytes, durationCapSeconds)
       resolve(path.join(tempDir, downloaded));
     });
   });
+}
+
+// This allows me to split the reply in chunks.
+async function ReplyInChunks(interaction, content) {
+  const chunks = content.match(/[\s\S]{1,2000}/g);
+
+  for (let i = 0; i < chunks.length; i++) {
+    if (i === 0) {
+      await interaction.editReply(chunks[i]);
+    } else {
+      await interaction.followUp({
+        content: chunks[i],
+        flags: replyFlags(interaction)
+      });
+    }
+  }
 }
 
 function safeUnlink(p) {

@@ -12,7 +12,7 @@ import { replyFlags } from './visibility.js';
 
 function denyOwnerOnly(interaction) {
   return {
-    content: '🔒 That setting can only be changed by the bot owner.',
+    content: '🔒 That setting can only be changed by the bot owner, and you don\'t look to me like one, smh.',
     flags: replyFlags(interaction)
   };
 }
