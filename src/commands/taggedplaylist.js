@@ -8,6 +8,12 @@ import { getSession, playSound, stopSession } from '../audio/player.js';
 import { isAdmin } from '../admins.js';
 import { logger } from '../logger.js';
 import { replyFlags } from './visibility.js';
+import {
+  armRemoteCooldown,
+  buildRemoteCooldownMessage,
+  getRemoteCooldownRemainingMs,
+  isRemoteTarget
+} from './play.js';
 
 export async function handleTaggedPlaylist(interaction) {
   const tagName = interaction.options.getString('tag').toLowerCase().trim();
@@ -42,6 +48,18 @@ export async function handleTaggedPlaylist(interaction) {
       content: `I don't have permission to connect/speak in <#${targetChannel.id}>.`, 
       flags: replyFlags(interaction) 
     });
+  }
+
+  const isRemotePlay = isRemoteTarget(userVoice, targetChannel);
+  if (isRemotePlay && !isAdmin(guild, member.id)) {
+    const remaining = getRemoteCooldownRemainingMs(guild.id, member.id);
+    if (remaining > 0) {
+      const seconds = Math.ceil(remaining / 1000);
+      return interaction.reply({
+        content: buildRemoteCooldownMessage(targetChannel.id, seconds),
+        flags: replyFlags(interaction)
+      });
+    }
   }
 
   const viewScope = getSetting(guild.id, 'view_scope');
@@ -85,6 +103,7 @@ export async function handleTaggedPlaylist(interaction) {
   await interaction.deferReply({ flags: replyFlags(interaction) });
 
   let currentIndex = 0;
+  let started = 0;
   async function playNext() {
     if (currentIndex >= playable.length) {
         logger.info('Tagged playlist finished', { tag: tagName, guildId: guild.id });
@@ -98,17 +117,28 @@ export async function handleTaggedPlaylist(interaction) {
       await playSound(guild, targetChannel, filePath, sound.name, member.id, {
         onComplete: playNext
       });
+      started++;
     } catch (err) {
       logger.error('Playlist playback error', { sound: sound.name, error: err.message });
-      playNext(); // Skip failed sound and continue
+      return playNext(); // Skip failed sound and continue
     }
   }
 
   await playNext();
 
+  if (started === 0) {
+    return interaction.editReply({
+      content: `Playlist failed — no sounds tagged **${tagName}** could be played.`
+    });
+  }
+
+  if (isRemotePlay && !admin) {
+    armRemoteCooldown(guild.id, member.id);
+  }
+
   const skipped = sounds.length - playable.length;
   const skipNote = skipped > 0 ? ` (${skipped} missing files skipped)` : '';
   await interaction.editReply({
-    content: `Playing **${playable.length}** sounds tagged **${tagName}** in <#${targetChannel.id}>.${skipNote}`
+    content: `Playing **${started}** sounds tagged **${tagName}** in <#${targetChannel.id}>.${skipNote}`
   });
 }

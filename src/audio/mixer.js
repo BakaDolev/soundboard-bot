@@ -56,7 +56,8 @@ export class Mixer extends Readable {
       buffer: Buffer.alloc(0),
       ended: false,
       killed: false,
-      onFinish: onFinish || (() => {})
+      onFinish: onFinish || (() => {}),
+      onAbort: options.onAbort || (() => {})
     };
 
     proc.stdout.on('data', chunk => {
@@ -85,6 +86,31 @@ export class Mixer extends Readable {
     return id;
   }
 
+  waitForSourceBuffer(id, minBytes, timeoutMs) {
+    return new Promise(resolve => {
+      const startedAt = Date.now();
+
+      const poll = () => {
+        const src = this.sources.get(id);
+        if (!src || this.destroyed_) {
+          resolve(false);
+          return;
+        }
+        if (src.buffer.length >= minBytes || src.ended) {
+          resolve(true);
+          return;
+        }
+        if (Date.now() - startedAt >= timeoutMs) {
+          resolve(false);
+          return;
+        }
+        setTimeout(poll, 20);
+      };
+
+      poll();
+    });
+  }
+
   /**
    * Kill a specific source immediately (used by `/sb stop` variants if we ever
    * need per-source stops — currently the whole session is torn down at once).
@@ -95,8 +121,8 @@ export class Mixer extends Readable {
     src.killed = true;
     try { src.proc.kill('SIGKILL'); } catch {}
     this.sources.delete(id);
-    try { src.onFinish(); } catch (err) {
-      logger.error('onFinish callback threw', { err: err.message });
+    try { src.onAbort(); } catch (err) {
+      logger.error('onAbort callback threw', { err: err.message });
     }
     this.checkEmpty();
   }
@@ -170,6 +196,9 @@ export class Mixer extends Readable {
     for (const src of this.sources.values()) {
       src.killed = true;
       try { src.proc.kill('SIGKILL'); } catch {}
+      try { src.onAbort(); } catch (err) {
+        logger.error('onAbort callback threw', { err: err.message });
+      }
     }
     this.sources.clear();
     this.push(null);

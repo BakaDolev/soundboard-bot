@@ -18,7 +18,7 @@ import { replyFlags } from './visibility.js';
 const REMOTE_COOLDOWN_MS = 30_000;
 const remoteCooldowns = new Map(); // `${guildId}:${userId}` -> expiryTs
 
-function cooldownRemainingMs(guildId, userId) {
+export function getRemoteCooldownRemainingMs(guildId, userId) {
   const key = `${guildId}:${userId}`;
   const expiry = remoteCooldowns.get(key);
   if (!expiry) return 0;
@@ -30,8 +30,19 @@ function cooldownRemainingMs(guildId, userId) {
   return remaining;
 }
 
-function armCooldown(guildId, userId) {
+export function armRemoteCooldown(guildId, userId) {
   remoteCooldowns.set(`${guildId}:${userId}`, Date.now() + REMOTE_COOLDOWN_MS);
+}
+
+export function isRemoteTarget(userVoice, targetChannel) {
+  return !userVoice || userVoice.id !== targetChannel.id;
+}
+
+export function buildRemoteCooldownMessage(targetChannelId, seconds) {
+  return (
+    `⏳ Remote-play cooldown: **${seconds}s** left. ` +
+    `Join <#${targetChannelId}> to bypass it, or wait it out, ya impatient fuck!`
+  );
 }
 
 export async function handlePlay(interaction) {
@@ -109,15 +120,13 @@ export async function handlePlay(interaction) {
   // Remote = target channel isn't the one the user is currently sitting in.
   // If they're already in the target channel, no cooldown applies, so the
   // user can always bypass an existing cooldown by moving into the channel.
-  const isRemotePlay = !userVoice || userVoice.id !== targetChannel.id;
+  const isRemotePlay = isRemoteTarget(userVoice, targetChannel);
   if (isRemotePlay && !admin) {
-    const remaining = cooldownRemainingMs(interaction.guild.id, member.id);
+    const remaining = getRemoteCooldownRemainingMs(interaction.guild.id, member.id);
     if (remaining > 0) {
       const seconds = Math.ceil(remaining / 1000);
       return interaction.reply({
-        content:
-          `⏳ Remote-play cooldown: **${seconds}s** left. ` +
-          `Join <#${targetChannel.id}> to bypass it, or wait it out, ya impatient fuck!`,
+        content: buildRemoteCooldownMessage(targetChannel.id, seconds),
         flags: replyFlags(interaction)
       });
     }
@@ -168,13 +177,13 @@ export async function handlePlay(interaction) {
       filePath,
       sound.name,
       member.id
-    );
+      );
 
-    // Only arm the cooldown once the play actually succeeds, so a failed
-    // attempt doesn't lock the user out for 30s for nothing.
-    if (isRemotePlay && !admin) {
-      armCooldown(interaction.guild.id, member.id);
-    }
+      // Only arm the cooldown once the play actually succeeds, so a failed
+      // attempt doesn't lock the user out for 30s for nothing.
+      if (isRemotePlay && !admin) {
+        armRemoteCooldown(interaction.guild.id, member.id);
+      }
 
     const display = displayName(sound.name);
     const suffix = result.overlapping > 1 ? ` (${result.overlapping} sounds overlapping)` : '';

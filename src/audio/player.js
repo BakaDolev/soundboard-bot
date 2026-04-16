@@ -8,7 +8,7 @@ import {
   NoSubscriberBehavior
 } from '@discordjs/voice';
 import { ActivityType } from 'discord.js';
-import { Mixer } from './mixer.js';
+import { Mixer, MIXER_CONSTANTS } from './mixer.js';
 import { logger } from '../logger.js';
 
 /**
@@ -117,6 +117,8 @@ function updateActivity(client) {
 
 // Idle disconnect after this long while paused.
 const PAUSE_IDLE_MS = 2 * 60 * 1000;
+const INITIAL_BUFFER_FRAMES = 4;
+const INITIAL_BUFFER_TIMEOUT_MS = 2_000;
 
 export function getSession(guildId) {
   return sessions.get(guildId);
@@ -135,41 +137,63 @@ export async function playSound(guild, voiceChannel, soundFilePath, soundName, u
     session = await createSession(guild, voiceChannel);
   }
 
-  return new Promise((resolve, reject) => {
-    const sourceId = session.mixer.addSource(soundFilePath, () => {
-      session.playing.delete(sourceId);
-      logger.ok('sound finished', { guildId: guild.id, sound: soundName, userId });
-      updateActivity(guild.client);
-      if (typeof options.onComplete === 'function') {
+  const shouldPrimePlayer = !session.started;
+  const sourceId = session.mixer.addSource(soundFilePath, () => {
+    session.playing.delete(sourceId);
+    logger.ok('sound finished', { guildId: guild.id, sound: soundName, userId });
+    updateActivity(guild.client);
+    if (typeof options.onComplete === 'function') {
+      try {
+        options.onComplete();
+      } catch (err) {
+        logger.error('onComplete callback threw', { sound: soundName, err: err.message });
+      }
+    }
+  }, {
+    ...options,
+    onAbort: () => {
+      if (typeof options.onAbort === 'function') {
         try {
-          options.onComplete();
+          options.onAbort();
         } catch (err) {
-          logger.error('onComplete callback threw', { sound: soundName, err: err.message });
+          logger.error('onAbort callback threw', { sound: soundName, err: err.message });
         }
       }
-    }, options);
-
-    if (sourceId === null) {
-      return reject(new Error('Mixer is destroyed'));
     }
-
-    session.playing.set(sourceId, {
-      name: soundName,
-      userId,
-      startedAt: Date.now()
-    });
-
-    logger.ok('sound playing', {
-      guildId: guild.id,
-      sound: soundName,
-      userId,
-      overlapping: session.playing.size
-    });
-
-    updateActivity(guild.client);
-
-    resolve({ sourceId, overlapping: session.playing.size });
   });
+
+  if (sourceId === null) {
+    throw new Error('Mixer is destroyed');
+  }
+
+  session.playing.set(sourceId, {
+    name: soundName,
+    userId,
+    startedAt: Date.now()
+  });
+
+  if (shouldPrimePlayer) {
+    await session.mixer.waitForSourceBuffer(
+      sourceId,
+      MIXER_CONSTANTS.FRAME_BYTES * INITIAL_BUFFER_FRAMES,
+      INITIAL_BUFFER_TIMEOUT_MS
+    );
+    if (!session.started) {
+      session.player.play(session.resource);
+      session.started = true;
+    }
+  }
+
+  logger.ok('sound playing', {
+    guildId: guild.id,
+    sound: soundName,
+    userId,
+    overlapping: session.playing.size
+  });
+
+  updateActivity(guild.client);
+
+  return { sourceId, overlapping: session.playing.size };
 }
 
 async function createSession(guild, voiceChannel) {
@@ -207,11 +231,12 @@ async function createSession(guild, voiceChannel) {
   // burst load (observed when /sb spam adds 13 sources in ~16ms — the player
   // never resumed and pushed silence the entire spam window).
   connection.subscribe(player);
-  player.play(resource);
 
   const session = {
     connection,
     player,
+    resource,
+    started: false,
     mixer,
     channelId: voiceChannel.id,
     playing: new Map(),

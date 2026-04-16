@@ -10,6 +10,12 @@ import { getSetting } from '../settings.js';
 import { formatBytes } from '../storage.js';
 import { logger } from '../logger.js';
 import { replyFlags } from './visibility.js';
+import {
+  armRemoteCooldown,
+  buildRemoteCooldownMessage,
+  getRemoteCooldownRemainingMs,
+  isRemoteTarget
+} from './play.js';
 
 const YOUTUBE_REGEX =
   /^(https?:\/\/)?((?:www\.|m\.|music\.)?youtube\.com\/(watch\?.*v=|shorts\/)|youtu\.be\/)[\w-]+/;
@@ -63,6 +69,18 @@ export async function handleQuickPlay(interaction) {
     });
   }
 
+  const isRemotePlay = isRemoteTarget(userVoice, targetChannel);
+  if (isRemotePlay && !admin) {
+    const remaining = getRemoteCooldownRemainingMs(guild.id, member.id);
+    if (remaining > 0) {
+      const seconds = Math.ceil(remaining / 1000);
+      return interaction.reply({
+        content: buildRemoteCooldownMessage(targetChannel.id, seconds),
+        flags: replyFlags(interaction)
+      });
+    }
+  }
+
   const session = getSession(guild.id);
   if (session && session.channelId !== targetChannel.id) {
     if (admin) {
@@ -109,6 +127,10 @@ export async function handleQuickPlay(interaction) {
         onComplete: () => {
           safeUnlink(tempFile);
           logger.ok('quickplay temp file cleaned up', { tempId });
+        },
+        onAbort: () => {
+          safeUnlink(tempFile);
+          logger.ok('quickplay temp file cleaned up after early stop', { tempId });
         }
       }
     );
@@ -118,7 +140,11 @@ export async function handleQuickPlay(interaction) {
     return interaction.editReply(`Failed to play: ${err.message}`);
   }
 
-  const remoteNote = (!userVoice || userVoice.id !== targetChannel.id)
+  if (isRemotePlay && !admin) {
+    armRemoteCooldown(guild.id, member.id);
+  }
+
+  const remoteNote = isRemotePlay
     ? ` in <#${targetChannel.id}>`
     : '';
   await interaction.editReply(
