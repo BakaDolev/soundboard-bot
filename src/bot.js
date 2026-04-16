@@ -115,6 +115,24 @@ export function createBot() {
           return interaction.respond(choices);
         }
 
+        // Tag autocomplete — used by `/sb playlist tag:`, `/sb tag remove tag:`.
+        // Scope matches view_scope: `guild` lists only tags on guild-local
+        // sounds, `global` lists tags on all public sounds.
+        if (focused.name === 'tag') {
+          const query = String(focused.value || '').toLowerCase();
+          const canonical = query.replace(/[%_]/g, '');
+          const pattern = `%${canonical}%`;
+
+          const viewScope = getSetting(interaction.guild.id, 'view_scope');
+          const rows =
+            viewScope === 'guild'
+              ? queries.searchTagsForGuild.all(interaction.guild.id, pattern)
+              : queries.searchTagsGlobal.all(pattern);
+
+          const choices = rows.slice(0, 25).map(r => ({ name: r.tag, value: r.tag }));
+          return interaction.respond(choices);
+        }
+
         // `/sb settings set value:` — suggest options for the currently
         // selected key. Enum keys list each valid value with a description;
         // numeric keys surface the current default as a one-click suggestion.
@@ -230,6 +248,7 @@ function resolveHandler(group, sub) {
     case 'pause': return handlePause;
     case 'resume': return handleResume;
     case 'quickplay': return handleQuickPlay;
+    case 'playlist': return handleTaggedPlaylist;
     case 'storage': return handleStorage;
     default: return null;
   }

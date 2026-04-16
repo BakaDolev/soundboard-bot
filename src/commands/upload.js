@@ -16,7 +16,6 @@ import { getSetting } from '../settings.js';
 import { storeName, displayName, canonicalize } from '../names.js';
 import { logger } from '../logger.js';
 import { replyFlags } from './visibility.js';
-import { measureMemory } from 'node:vm';
 
 // Hardcoded absolute ceiling — applies even to admins.
 const ADMIN_HARD_CAP_MB = 200;
@@ -35,7 +34,7 @@ export async function handleUpload(interaction) {
 
   const guild = interaction.guild;
   const owner = isOwner(interaction.user.id);
-  const admin = isAdmin(guild, interaction.user.id, interaction.member);
+  const admin = isAdmin(guild, interaction.user.id);
 
   // --- Must provide exactly one source -------------------------------------
   if (!attachment && !youtubeUrl) {

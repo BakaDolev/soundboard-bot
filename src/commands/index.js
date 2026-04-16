@@ -66,10 +66,10 @@ function buildSlashCommand(name) {
       )
     )
 
-    .addSubcommand( s =>
+    .addSubcommand(s =>
       withVisibility(
         s
-          .setName('Playlist')
+          .setName('playlist')
           .setDescription('Play a playlist of sounds tagged with a common keyword I guess? Basically tags')
           .addStringOption(o =>
             o
@@ -80,7 +80,6 @@ function buildSlashCommand(name) {
           )
       )
     )
-
     .addSubcommand(s =>
       withVisibility(
         s

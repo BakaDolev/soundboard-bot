@@ -56,7 +56,7 @@ export async function handleTaggedPlaylist(interaction) {
     });
   }
 
-  const admin = isAdmin(guild, member.id, member);
+  const admin = isAdmin(guild, member.id);
   const session = getSession(guild.id);
   if (session && session.channelId !== targetChannel.id) {
     if (admin) {
