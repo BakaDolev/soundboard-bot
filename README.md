@@ -12,9 +12,9 @@ Runs as a Docker container on Unraid (or anywhere Docker runs).
 
 - `/sb upload` — attach any audio/video file, the bot auto-converts to Opus OGG (128kbps, 48kHz stereo). Names accept spaces, hyphens, or underscores; the bot stores them in kebab-case and displays them with spaces.
 - `/sb play name [channel]` — plays a sound; multiple sounds overlap in a live mix. Optional `channel:` lets you summon the bot to any voice channel you can see (Discord filters the picker to channels you have view access to). Non-admins get a **30s remote-play cooldown** for sending the bot to a channel they're not currently sitting in — playing into the channel you're already in is always free, and joining the target channel bypasses an active cooldown.
-- `/sb quickplay youtube_url [channel]` — play a YouTube link without saving it. The audio is downloaded to a temp file and deleted as soon as playback finishes. Same size/duration caps as `/sb upload`.
-- `/sb playlist tag [channel]` — play every sound tagged with the given keyword in sequence.
-- `/sb tag add|remove|list` — attach or inspect tags on sounds. Uploader, admin, or owner can tag; everyone can list.
+- `/sb quickplay youtube_url [channel]` — play a YouTube link without saving it. The audio is downloaded to a temp file and deleted when playback finishes or the session is stopped early. Same size/duration caps and remote-play cooldown rules as `/sb play`.
+- `/sb playlist tag [channel]` — play every sound tagged with the given keyword in sequence. Same remote-play cooldown rules as `/sb play`.
+- `/sb tag add|remove|list|bulk` — attach or inspect tags on sounds. Uploader, admin, or owner can tag; everyone can list. `/sb tag bulk` opens a paginated multi-select UI so you can add or remove one tag across multiple visible sounds at once.
 - `/sb edit name new_name` — uploader (or owner) renames a sound
 - `/sb cut name start end` — uploader (or owner) trims a sound in place. Times accept `MM:SS`, `HH:MM:SS`, or plain seconds.
 - `/sb delete` 🔒 — uploader, admin of the source server, or owner can delete
@@ -161,6 +161,8 @@ Every upload is re-encoded to **Opus in an OGG container** at 128kbps, 48kHz, st
 ### Overlapping playback
 
 Discord only allows one audio stream per voice connection. To overlap sounds, each active sound spawns its own ffmpeg process that decodes to raw PCM. A custom `Mixer` Readable stream pulls 20ms frames from every active source, sums the samples (clamped to int16), and pushes one combined PCM stream into Discord. When a source drains, it's removed from the mix. When the mix empties, the bot disconnects.
+
+For the first sound in a fresh session, the bot now waits for a short PCM buffer before starting Discord playback. That avoids the old "it started a few seconds into the clip" feel that could happen while ffmpeg was still warming up.
 
 ### Channel lock & admin priority
 

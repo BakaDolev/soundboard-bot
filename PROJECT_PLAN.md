@@ -46,6 +46,8 @@ Discord only allows one audio stream per voice connection. To play multiple soun
 3. That stream is wrapped in an `AudioResource` with `StreamType.Raw` and played through a single `AudioPlayer`.
 4. When a source drains, it's removed from the mix. When the mixer has no more sources, the session ends and the bot disconnects.
 
+To avoid clips feeling like they start late on a fresh voice session, the player now waits for a short PCM buffer before starting Discord playback. That trades a tiny startup delay for cleaner first-sound timing.
+
 ---
 
 ## File Limits
@@ -71,11 +73,12 @@ Every command is registered under both `/sb` and `/soundboard`.
 |---|---|
 | `/sb upload name:<text> [file:<attachment>] [youtube_url:<text>]` | Upload audio/video file or YouTube link. Exactly one source required. Names accept spaces/hyphens/underscores; stored kebab-case, displayed with spaces. Tag (global vs private) follows the server's `upload_scope`. Admins bypass the storage hard cap (owner always does). |
 | `/sb play name:<text>` | Play a sound. Overlaps current playback if same channel. Blocked cross-channel for non-admins. Visibility honours `view_scope`. |
-| `/sb quickplay youtube_url:<text> [channel:<channel>]` | Play a YouTube link without saving it — audio is downloaded to a temp file and deleted when playback finishes. Same caps as `/sb upload` (owner unlimited, admin 200 MB / no duration cap, user 100 MB / `max_duration_seconds`). |
-| `/sb playlist tag:<text> [channel:<channel>]` | Play every sound carrying a given tag, in sequence. Scope follows `view_scope`. Missing files are skipped. |
+| `/sb quickplay youtube_url:<text> [channel:<channel>]` | Play a YouTube link without saving it — audio is downloaded to a temp file and deleted when playback finishes or the session stops early. Same caps as `/sb upload` (owner unlimited, admin 200 MB / no duration cap, user 100 MB / `max_duration_seconds`) and the same remote-play cooldown rules as `/sb play`. |
+| `/sb playlist tag:<text> [channel:<channel>]` | Play every sound carrying a given tag, in sequence. Scope follows `view_scope`. Missing files are skipped. Shares the same remote-play cooldown rules as `/sb play`. |
 | `/sb tag add name:<text> tag:<text>` | Attach a tag to a sound. Uploader, admin, or owner. Max 10 tags per sound, 1–32 chars `[a-zA-Z0-9_-]`. |
 | `/sb tag remove name:<text> tag:<text>` | Remove a tag from a sound. Same permissions as `tag add`. |
 | `/sb tag list [name:<text>]` | With `name:` → tags on that sound; without → every tag visible under `view_scope`. |
+| `/sb tag bulk tag:<text> mode:<add\|remove>` | Opens a paginated multi-select UI for bulk tagging across visible sounds. Supports uploader and length filters, per-sound permission checks, and applies one tag add/remove operation across the current selection. |
 | `/sb edit name:<text> new_name:<text>` | Rename a sound. Uploader or owner only. |
 | `/sb cut name:<text> start:<text> end:<text>` | Trim a sound in place. Uploader or owner only. Times accept `MM:SS`, `HH:MM:SS`, or seconds. |
 | `/sb delete name:<text>` 🔒 | Uploader, admin of the source server, or owner. |
@@ -86,7 +89,7 @@ Every command is registered under both `/sb` and `/soundboard`.
 | `/sb admin add\|remove\|list user:<@user>` 🔒 | Manage **per-server** bot admin list. Owner is implicit admin everywhere. |
 | `/sb settings view\|set\|unset key:<choice> [value:<text>]` 🔒 | Per-server runtime settings. Some keys are owner-only. |
 
-Autocomplete is enabled on the `name` option for every command that takes one. Lookups use a canonical match form so users can type the name with any combination of spaces, hyphens, and underscores. Tag inputs (`/sb playlist tag:`, `/sb tag remove tag:`) also autocomplete against the current `view_scope`.
+Autocomplete is enabled on the `name` option for every command that takes one. Lookups use a canonical match form so users can type the name with any combination of spaces, hyphens, and underscores. Tag inputs (`/sb playlist tag:`, `/sb tag remove tag:`, `/sb tag bulk tag:`) also autocomplete against the current `view_scope`.
 
 ---
 
@@ -154,7 +157,7 @@ Soundboard Bot/
 │       ├── upload.js
 │       ├── play.js
 │       ├── quickplay.js      # /sb quickplay — transient YouTube playback
-│       ├── tag.js            # /sb tag add|remove|list
+│       ├── tag.js            # /sb tag add|remove|list|bulk
 │       ├── taggedplaylist.js # /sb playlist
 │       ├── delete.js
 │       ├── list.js
@@ -246,6 +249,14 @@ Admins are also global — the bot is designed for a single deployment where adm
 - Admins now bypass the storage hard cap in `/sb upload` (previously owner-only). Soft-cap DM warnings are unchanged.
 - Tag inputs get autocomplete; `name` autocomplete was already wired.
 - Naming: new files keep to the existing camelCase convention throughout.
+
+### 2026-04-16 — Bulk tag UI + playback priming
+- New `/sb tag bulk` flow mirrors `/sb list` with a paginated component UI: page navigation, multi-select sound picker, uploader filter, length filter modal, mode toggle (`add` / `remove`), apply, clear selection, and cancel.
+- Bulk operations only act on sounds visible under the current `view_scope`, and each selected sound still does a normal uploader/admin/owner permission check before changing tags.
+- `/sb tag list name:` now rejects exact-name lookups for sounds that are not visible in the current guild, closing the visibility leak from direct name guessing.
+- Fresh sessions no longer start Discord playback until the first PCM source has buffered a few frames, which fixes the "clip sounds like it started late" issue on cold start.
+- Mixer cleanup now distinguishes normal drain (`onFinish`) from early teardown (`onAbort`), so `/sb quickplay` temp files are also removed when playback is stopped or the session disconnects early.
+- `/sb quickplay` and `/sb playlist` now share the same remote-play cooldown rules as `/sb play`.
 
 ### 2026-04-10 — Per-guild rework + edit/cut/pause
 - Per-guild settings layer (`guild_settings` table + `src/settings.js`) with env values as defaults. Settable keys: `max_file_size_mb`, `max_duration_seconds`, `max_sounds_per_user`, `spam_pool_size`, `upload_scope`, `view_scope`, `admin_mode`, `storage_warn_gb_override`, `storage_hard_gb_override`. The two storage overrides and `admin_mode` are owner-only.
