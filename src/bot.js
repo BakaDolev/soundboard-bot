@@ -30,7 +30,7 @@ import {
 } from './commands/pause.js';
 import { scheduleDismiss } from './commands/visibility.js';
 import { handleQuickPlay } from './commands/quickplay.js';
-import { handleTagAdd, handleTagRemove, handleTagList } from './commands/tag.js';
+import { handleTagAdd, handleTagRemove, handleTagList, handleTagBulk } from './commands/tag.js';
 import { handleTaggedPlaylist } from './commands/taggedplaylist.js';
 
 // Both /sb and /soundboard route to the same handlers.
@@ -222,6 +222,7 @@ function resolveHandler(group, sub) {
     if (sub === 'add') return handleTagAdd;
     if (sub === 'remove') return handleTagRemove;
     if (sub === 'list') return handleTagList;
+    if (sub === 'bulk') return handleTagBulk;
     return null;
   }
   if (group === 'admin') {

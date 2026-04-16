@@ -78,6 +78,12 @@ function buildSlashCommand(name) {
               .setRequired(true)
               .setAutocomplete(true)
           )
+          .addChannelOption(o =>
+            o
+              .setName('channel')
+              .setDescription('Voice channel to play in (defaults to your current channel)')
+              .addChannelTypes(ChannelType.GuildVoice)
+          )
       )
     )
     .addSubcommand(s =>
@@ -234,6 +240,30 @@ function buildSlashCommand(name) {
               .setDescription('List all tags, or tags on a specific sound')
               .addStringOption(o =>
                 o.setName('name').setDescription('Sound name (optional — omit to list all tags)').setAutocomplete(true)
+              )
+          )
+        )
+        .addSubcommand(s =>
+          withVisibility(
+            s
+              .setName('bulk')
+              .setDescription('Bulk add or remove one tag across multiple visible sounds')
+              .addStringOption(o =>
+                o
+                  .setName('tag')
+                  .setDescription('Tag to add or remove')
+                  .setRequired(true)
+                  .setAutocomplete(true)
+              )
+              .addStringOption(o =>
+                o
+                  .setName('mode')
+                  .setDescription('Whether to add or remove the tag')
+                  .setRequired(true)
+                  .addChoices(
+                    { name: 'add', value: 'add' },
+                    { name: 'remove', value: 'remove' }
+                  )
               )
           )
         )
