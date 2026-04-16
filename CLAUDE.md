@@ -14,6 +14,7 @@
 - **Explain what I'm doing** — when writing or changing non-trivial logic, I'll say what it does and why.
 - **Suggest improvements proactively** — I'll flag things worth improving without silently fixing them.
 - **Never break working stuff** — if a change could affect existing behavior, I'll call it out before making it.
+- **Reviews should be easy to scan** — for PR/code reviews, lead with a short title, basic PR metadata when available, and a clear verdict (`approve`, `needs changes`, `do not merge`). Put the most important findings first under headings like `Hard blockers`, `Other issues`, and `What's fine`, using plain, direct language rather than a vague summary.
 
 ---
 
