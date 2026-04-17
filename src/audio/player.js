@@ -10,6 +10,7 @@ import {
 import { ActivityType } from 'discord.js';
 import { Mixer, MIXER_CONSTANTS } from './mixer.js';
 import { logger } from '../logger.js';
+import { displayName } from '../names.js';
 
 /**
  * guildId -> session
@@ -84,7 +85,7 @@ function applyActivity(client) {
     const channelName = channel ? channel.name : 'Unknown';
     client.user.setActivity({
       name: 'Custom Status',
-      state: `🔊 Playing ${latestSound} in ${channelName}`,
+      state: `🔊 Playing ${displayName(latestSound)} in ${channelName}`,
       type: ActivityType.Custom
     });
   } else {
