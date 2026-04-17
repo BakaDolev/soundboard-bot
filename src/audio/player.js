@@ -118,8 +118,8 @@ function updateActivity(client) {
 
 // Idle disconnect after this long while paused.
 const PAUSE_IDLE_MS = 2 * 60 * 1000;
-const INITIAL_BUFFER_FRAMES = 4;
-const INITIAL_BUFFER_TIMEOUT_MS = 2_000;
+const INITIAL_BUFFER_FRAMES = 2;
+const INITIAL_BUFFER_TIMEOUT_MS = 750;
 
 export function getSession(guildId) {
   return sessions.get(guildId);
@@ -145,7 +145,7 @@ export async function playSound(guild, voiceChannel, soundFilePath, soundName, u
     updateActivity(guild.client);
     if (typeof options.onComplete === 'function') {
       try {
-        options.onComplete();
+        options.onComplete(sourceId);
       } catch (err) {
         logger.error('onComplete callback threw', { sound: soundName, err: err.message });
       }
@@ -155,7 +155,7 @@ export async function playSound(guild, voiceChannel, soundFilePath, soundName, u
     onAbort: () => {
       if (typeof options.onAbort === 'function') {
         try {
-          options.onAbort();
+          options.onAbort(sourceId);
         } catch (err) {
           logger.error('onAbort callback threw', { sound: soundName, err: err.message });
         }
@@ -295,6 +295,18 @@ async function createSession(guild, voiceChannel) {
  */
 export function stopSession(guildId, reason = 'manual') {
   cleanupSession(guildId, reason);
+}
+
+export function removeSessionSource(guildId, sourceId) {
+  const session = sessions.get(guildId);
+  if (!session || sourceId == null) return false;
+  if (!session.playing.has(sourceId)) return false;
+
+  session.mixer.removeSource(sourceId);
+  session.playing.delete(sourceId);
+  updateActivity(session.client);
+  logger.ok('session source removed', { guildId, sourceId });
+  return true;
 }
 
 /**

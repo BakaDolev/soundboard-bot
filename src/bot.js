@@ -31,7 +31,7 @@ import {
 import { scheduleDismiss } from './commands/visibility.js';
 import { handleQuickPlay } from './commands/quickplay.js';
 import { handleTagAdd, handleTagRemove, handleTagList, handleTagBulk } from './commands/tag.js';
-import { handleTaggedPlaylist } from './commands/taggedplaylist.js';
+import { handlePlaylistSkip, handleTaggedPlaylist } from './commands/taggedplaylist.js';
 
 // Both /sb and /soundboard route to the same handlers.
 const COMMAND_NAMES = new Set(['sb', 'soundboard']);
@@ -250,6 +250,7 @@ function resolveHandler(group, sub) {
     case 'resume': return handleResume;
     case 'quickplay': return handleQuickPlay;
     case 'playlist': return handleTaggedPlaylist;
+    case 'skip': return handlePlaylistSkip;
     case 'storage': return handleStorage;
     default: return null;
   }

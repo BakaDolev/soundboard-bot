@@ -75,6 +75,7 @@ Every command is registered under both `/sb` and `/soundboard`.
 | `/sb play name:<text>` | Play a sound. Overlaps current playback if same channel. Blocked cross-channel for non-admins. Visibility honours `view_scope`. |
 | `/sb quickplay youtube_url:<text> [channel:<channel>]` | Play a YouTube link without saving it — audio is downloaded to a temp file and deleted when playback finishes or the session stops early. Same caps as `/sb upload` (owner unlimited, admin 200 MB / no duration cap, user 100 MB / `max_duration_seconds`) and the same remote-play cooldown rules as `/sb play`. |
 | `/sb playlist tag:<text> [channel:<channel>]` | Play every sound carrying a given tag, in sequence. Scope follows `view_scope`. Missing files are skipped. Shares the same remote-play cooldown rules as `/sb play`. |
+| `/sb skip` | Skip the currently playing song in the active tagged playlist. Playlist initiator or admin only. |
 | `/sb tag add name:<text> tag:<text>` | Attach a tag to a sound. Uploader, admin, or owner. Max 10 tags per sound, 1–32 chars `[a-zA-Z0-9_-]`. |
 | `/sb tag remove name:<text> tag:<text>` | Remove a tag from a sound. Same permissions as `tag add`. |
 | `/sb tag list [name:<text>]` | With `name:` → tags on that sound; without → every tag visible under `view_scope`. |
@@ -263,6 +264,11 @@ Admins are also global — the bot is designed for a single deployment where adm
 - Successful uploads now confirm the tag they added, and upload logs include that tag for easier debugging.
 - Admin checks now accept the live interaction member object, which fixes `admin_mode=server` cases where Discord admins or the guild owner could be treated like regular users because the member cache was cold.
 - Attachment download failures during `/sb upload` now return a clearer user-facing error instead of always falling back to the generic unexpected upload failure reply.
+
+### 2026-04-17 — Playlist skip + faster cold-start playback
+- Added `/sb skip`, which only targets the currently playing song inside an active tagged playlist. The playlist initiator and admins can use it without stopping the whole voice session.
+- Tagged playlists now keep lightweight per-guild runtime state so a skip cleanly aborts just the current playlist source and immediately advances to the next song.
+- Fresh-session startup latency was reduced by trimming the initial PCM priming window and polling the decoder buffer a bit faster, while keeping the startup guard that avoids clipped first words on cold play.
 
 ### 2026-04-10 — Per-guild rework + edit/cut/pause
 - Per-guild settings layer (`guild_settings` table + `src/settings.js`) with env values as defaults. Settable keys: `max_file_size_mb`, `max_duration_seconds`, `max_sounds_per_user`, `spam_pool_size`, `upload_scope`, `view_scope`, `admin_mode`, `storage_warn_gb_override`, `storage_hard_gb_override`. The two storage overrides and `admin_mode` are owner-only.

@@ -4,9 +4,10 @@ import { PermissionFlagsBits } from 'discord.js';
 import { config } from '../config.js';
 import { queries } from '../db/database.js';
 import { getSetting } from '../settings.js';
-import { getSession, playSound, stopSession } from '../audio/player.js';
+import { getSession, playSound, removeSessionSource, stopSession } from '../audio/player.js';
 import { isAdmin } from '../admins.js';
 import { logger } from '../logger.js';
+import { displayName } from '../names.js';
 import { replyFlags } from './visibility.js';
 import {
   armRemoteCooldown,
@@ -14,6 +15,111 @@ import {
   getRemoteCooldownRemainingMs,
   isRemoteTarget
 } from './play.js';
+
+const playlistStates = new Map();
+
+function clearPlaylistState(guildId, state, reason) {
+  if (playlistStates.get(guildId) === state) {
+    playlistStates.delete(guildId);
+  }
+  state.active = false;
+  state.currentSourceId = null;
+  state.currentSoundName = null;
+  state.skipRequestedSourceId = null;
+  logger.info('tagged playlist state cleared', {
+    guildId,
+    tag: state.tagName,
+    reason,
+    started: state.started,
+    failed: state.failed,
+    total: state.playable.length
+  });
+}
+
+async function advancePlaylist(guild, state) {
+  if (!state.active) return false;
+  if (playlistStates.get(guild.id) !== state) return false;
+  if (state.advancePromise) return state.advancePromise;
+
+  const promise = (async () => {
+    while (state.active && playlistStates.get(guild.id) === state && state.nextIndex < state.playable.length) {
+      const sound = state.playable[state.nextIndex++];
+      const filePath = path.join(config.soundsDir, sound.filename);
+      state.currentSoundName = sound.name;
+      state.skipRequestedSourceId = null;
+
+      try {
+        const result = await playSound(guild, state.targetChannel, filePath, sound.name, state.startedBy, {
+          onComplete: sourceId => {
+            if (playlistStates.get(guild.id) !== state) return;
+            if (state.currentSourceId === sourceId) {
+              state.currentSourceId = null;
+              state.currentSoundName = null;
+            }
+            void advancePlaylist(guild, state);
+          },
+          onAbort: sourceId => {
+            if (playlistStates.get(guild.id) !== state) return;
+            if (state.currentSourceId === sourceId) {
+              state.currentSourceId = null;
+              state.currentSoundName = null;
+            }
+
+            const session = getSession(guild.id);
+            if (!session) {
+              clearPlaylistState(guild.id, state, 'session-ended');
+              return;
+            }
+
+            if (state.skipRequestedSourceId === sourceId) {
+              state.skipRequestedSourceId = null;
+              void advancePlaylist(guild, state);
+            }
+          }
+        });
+
+        if (!state.active || playlistStates.get(guild.id) !== state) {
+          return true;
+        }
+
+        state.currentSourceId = result.sourceId;
+        state.currentSoundName = sound.name;
+        state.started++;
+        return true;
+      } catch (err) {
+        state.failed++;
+        logger.error('playlist playback error', {
+          guildId: guild.id,
+          tag: state.tagName,
+          sound: sound.name,
+          err: err.message
+        });
+      }
+    }
+
+    if (playlistStates.get(guild.id) === state && state.active) {
+      logger.info('tagged playlist finished', {
+        tag: state.tagName,
+        guildId: guild.id,
+        started: state.started,
+        failed: state.failed,
+        total: state.playable.length
+      });
+      clearPlaylistState(guild.id, state, 'finished');
+    }
+
+    return false;
+  })();
+
+  state.advancePromise = promise;
+  try {
+    return await promise;
+  } finally {
+    if (state.advancePromise === promise) {
+      state.advancePromise = null;
+    }
+  }
+}
 
 export async function handleTaggedPlaylist(interaction) {
   const tagName = interaction.options.getString('tag').toLowerCase().trim();
@@ -102,31 +208,31 @@ export async function handleTaggedPlaylist(interaction) {
 
   await interaction.deferReply({ flags: replyFlags(interaction) });
 
-  let currentIndex = 0;
-  let started = 0;
-  async function playNext() {
-    if (currentIndex >= playable.length) {
-        logger.info('Tagged playlist finished', { tag: tagName, guildId: guild.id });
-        return;
-    }
-
-    const sound = playable[currentIndex++];
-    const filePath = path.join(config.soundsDir, sound.filename);
-
-    try {
-      await playSound(guild, targetChannel, filePath, sound.name, member.id, {
-        onComplete: playNext
-      });
-      started++;
-    } catch (err) {
-      logger.error('Playlist playback error', { sound: sound.name, error: err.message });
-      return playNext(); // Skip failed sound and continue
-    }
+  const existingPlaylist = playlistStates.get(guild.id);
+  if (existingPlaylist) {
+    clearPlaylistState(guild.id, existingPlaylist, 'replaced');
   }
 
-  await playNext();
+  const playlistState = {
+    tagName,
+    playable,
+    nextIndex: 0,
+    started: 0,
+    failed: 0,
+    active: true,
+    startedBy: member.id,
+    targetChannel,
+    currentSourceId: null,
+    currentSoundName: null,
+    skipRequestedSourceId: null,
+    advancePromise: null
+  };
+  playlistStates.set(guild.id, playlistState);
 
-  if (started === 0) {
+  const started = await advancePlaylist(guild, playlistState);
+
+  if (!started) {
+    clearPlaylistState(guild.id, playlistState, 'start-failed');
     return interaction.editReply({
       content: `Playlist failed — no sounds tagged **${tagName}** could be played.`
     });
@@ -139,6 +245,68 @@ export async function handleTaggedPlaylist(interaction) {
   const skipped = sounds.length - playable.length;
   const skipNote = skipped > 0 ? ` (${skipped} missing files skipped)` : '';
   await interaction.editReply({
-    content: `Playing **${started}** sounds tagged **${tagName}** in <#${targetChannel.id}>.${skipNote}`
+    content: `Playing **${playable.length}** sounds tagged **${tagName}** in <#${targetChannel.id}>.${skipNote}\nUse \`/sb skip\` to skip the current playlist song.`
+  });
+}
+
+export async function handlePlaylistSkip(interaction) {
+  const guild = interaction.guild;
+  const member = interaction.member;
+  const state = playlistStates.get(guild.id);
+
+  if (!state || !state.active) {
+    return interaction.reply({
+      content: 'No tagged playlist is active right now.',
+      flags: replyFlags(interaction)
+    });
+  }
+
+  const admin = isAdmin(guild, member);
+  const initiator = state.startedBy === member.id;
+  if (!admin && !initiator) {
+    return interaction.reply({
+      content: 'Only the playlist starter or an admin can skip the current playlist song.',
+      flags: replyFlags(interaction)
+    });
+  }
+
+  if (state.currentSourceId == null) {
+    if (state.advancePromise) {
+      return interaction.reply({
+        content: 'The playlist is already loading the next song.',
+        flags: replyFlags(interaction)
+      });
+    }
+
+    return interaction.reply({
+      content: 'There is no current playlist song to skip.',
+      flags: replyFlags(interaction)
+    });
+  }
+
+  const skippedName = displayName(state.currentSoundName || 'current track');
+  state.skipRequestedSourceId = state.currentSourceId;
+  const removed = removeSessionSource(guild.id, state.currentSourceId);
+
+  if (!removed) {
+    state.skipRequestedSourceId = null;
+    return interaction.reply({
+      content: 'Could not skip that playlist song. It may have already ended.',
+      flags: replyFlags(interaction)
+    });
+  }
+
+  logger.ok('playlist song skipped', {
+    guildId: guild.id,
+    tag: state.tagName,
+    sound: skippedName,
+    by: member.id,
+    asAdmin: admin,
+    asInitiator: initiator
+  });
+
+  return interaction.reply({
+    content: `⏭ Skipping **${skippedName}** in playlist **${state.tagName}**.`,
+    flags: replyFlags(interaction)
   });
 }

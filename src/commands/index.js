@@ -96,6 +96,13 @@ function buildSlashCommand(name) {
     .addSubcommand(s =>
       withVisibility(
         s
+          .setName('skip')
+          .setDescription('Skip the current song in the active tagged playlist (starter or admin)')
+      )
+    )
+    .addSubcommand(s =>
+      withVisibility(
+        s
           .setName('edit')
           .setDescription('Rename a sound you uploaded (owner can rename any)')
           .addStringOption(o =>

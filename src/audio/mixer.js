@@ -10,6 +10,7 @@ const BYTES_PER_SAMPLE = 2;
 const FRAME_DURATION_MS = 20;
 const FRAME_SAMPLES = (SAMPLE_RATE * FRAME_DURATION_MS / 1000) * CHANNELS;
 const FRAME_BYTES = FRAME_SAMPLES * BYTES_PER_SAMPLE;
+const SOURCE_BUFFER_POLL_MS = 10;
 
 /**
  * Mixer is a Readable PCM stream that dynamically mixes multiple audio sources.
@@ -104,7 +105,7 @@ export class Mixer extends Readable {
           resolve(false);
           return;
         }
-        setTimeout(poll, 20);
+        setTimeout(poll, SOURCE_BUFFER_POLL_MS);
       };
 
       poll();
