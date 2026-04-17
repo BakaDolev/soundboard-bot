@@ -18,7 +18,7 @@ import { replyFlags } from './visibility.js';
 export async function handleAdminAdd(interaction) {
   const actor = interaction.user.id;
   const guild = interaction.guild;
-  if (!isAdmin(guild, actor)) {
+  if (!isAdmin(guild, interaction.member ?? actor)) {
     return interaction.reply({
       content: 'Only bot admins can manage admins in this server.',
       flags: replyFlags(interaction)
@@ -53,7 +53,7 @@ export async function handleAdminAdd(interaction) {
 export async function handleAdminRemove(interaction) {
   const actor = interaction.user.id;
   const guild = interaction.guild;
-  if (!isAdmin(guild, actor)) {
+  if (!isAdmin(guild, interaction.member ?? actor)) {
     return interaction.reply({
       content: 'Only bot admins can manage admins in this server.',
       flags: replyFlags(interaction)

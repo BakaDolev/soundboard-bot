@@ -10,7 +10,7 @@ Runs as a Docker container on Unraid (or anywhere Docker runs).
 
 ## Features
 
-- `/sb upload` — attach any audio/video file, the bot auto-converts to Opus OGG (128kbps, 48kHz stereo). Names accept spaces, hyphens, or underscores; the bot stores them in kebab-case and displays them with spaces.
+- `/sb upload` — attach any audio/video file, the bot auto-converts to Opus OGG (128kbps, 48kHz stereo). Names accept spaces, hyphens, or underscores; the bot stores them in kebab-case and displays them with spaces. Optional `tag:` lets you create a new tag or add the sound to an existing one during upload.
 - `/sb play name [channel]` — plays a sound; multiple sounds overlap in a live mix. Optional `channel:` lets you summon the bot to any voice channel you can see (Discord filters the picker to channels you have view access to). Non-admins get a **30s remote-play cooldown** for sending the bot to a channel they're not currently sitting in — playing into the channel you're already in is always free, and joining the target channel bypasses an active cooldown.
 - `/sb quickplay youtube_url [channel]` — play a YouTube link without saving it. The audio is downloaded to a temp file and deleted when playback finishes or the session is stopped early. Same size/duration caps and remote-play cooldown rules as `/sb play`.
 - `/sb playlist tag [channel]` — play every sound tagged with the given keyword in sequence. Same remote-play cooldown rules as `/sb play`.
@@ -44,6 +44,7 @@ A user is a bot admin in a server if:
 Each server can switch its admin model with `/sb settings set admin_mode <bot|server>` (owner only):
 - `bot` (default) — uses the per-server bot admin list described above
 - `server` — anyone with Discord's `ADMINISTRATOR` permission in that server is treated as an admin
+- In `server` mode, admin checks now prefer the live interaction member, which avoids false negatives when Discord admins or the guild owner are not already in the member cache
 
 Admins can:
 - Add/remove other admins in their server (except the owner, who is permanent)

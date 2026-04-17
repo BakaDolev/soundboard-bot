@@ -20,11 +20,29 @@ export function isOwner(userId) {
   return !!userId && userId === config.ownerId;
 }
 
+function resolveUserId(actor) {
+  if (!actor) return null;
+  if (typeof actor === 'string') return actor;
+  if (typeof actor.id === 'string') return actor.id;
+  if (typeof actor.user?.id === 'string') return actor.user.id;
+  return null;
+}
+
+function resolveMember(guild, actor) {
+  if (!guild || !actor || typeof actor === 'string') return null;
+  if (typeof actor.permissions?.has === 'function') return actor;
+
+  const userId = resolveUserId(actor);
+  if (!userId) return null;
+  return guild.members?.cache?.get(userId) ?? null;
+}
+
 /**
  * Bot admin = owner OR a row in bot_admins for this (guild, user).
  * Owner is admin in every guild without needing a row.
  */
-export function isBotAdmin(guildId, userId) {
+export function isBotAdmin(guildId, actor) {
+  const userId = resolveUserId(actor);
   if (!userId || !guildId) return false;
   if (isOwner(userId)) return true;
   return !!queries.isBotAdmin.get(guildId, userId);
@@ -34,13 +52,25 @@ export function isBotAdmin(guildId, userId) {
  * Server admin = the user has Discord's ADMINISTRATOR permission in this guild.
  * Accepts either a Guild + userId pair or a GuildMember directly.
  */
-export function isServerAdmin(guild, userId) {
+export function isServerAdmin(guild, actor) {
+  const userId = resolveUserId(actor);
   if (!guild || !userId) return false;
   if (isOwner(userId)) return true;
-  // Try cache first; fall back to nothing (server admin checks should always
-  // be made from a context where the member is already cached, e.g. from an
-  // interaction).
-  const member = guild.members?.cache?.get(userId);
+  if (guild.ownerId === userId) return true;
+
+  if (actor && typeof actor !== 'string' && actor.permissions != null) {
+    const perms =
+      typeof actor.permissions?.has === 'function'
+        ? actor.permissions
+        : new PermissionsBitField(actor.permissions);
+    if (perms.has(PermissionsBitField.Flags.Administrator)) {
+      return true;
+    }
+  }
+
+  // Prefer the live GuildMember from the interaction when callers have it,
+  // then fall back to the guild cache.
+  const member = resolveMember(guild, actor);
   if (!member) return false;
   return member.permissions?.has(PermissionsBitField.Flags.Administrator) === true;
 }
@@ -49,11 +79,12 @@ export function isServerAdmin(guild, userId) {
  * Single dispatcher used by every power-gated command. Picks bot or server
  * admin layer based on the guild's `admin_mode` setting. Owner is always true.
  */
-export function isAdmin(guild, userId) {
+export function isAdmin(guild, actor) {
+  const userId = resolveUserId(actor);
   if (!guild || !userId) return false;
   if (isOwner(userId)) return true;
   const mode = getSetting(guild.id, 'admin_mode');
-  if (mode === 'server') return isServerAdmin(guild, userId);
+  if (mode === 'server') return isServerAdmin(guild, actor);
   return isBotAdmin(guild.id, userId);
 }
 

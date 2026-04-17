@@ -113,7 +113,7 @@ export async function handlePlay(interaction) {
     });
   }
 
-  const admin = isAdmin(interaction.guild, member.id);
+  const admin = isAdmin(interaction.guild, member);
   const session = getSession(interaction.guild.id);
 
   // --- Remote-play cooldown (non-admins) -----------------------------------

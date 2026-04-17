@@ -18,7 +18,7 @@ import { replyFlags } from './visibility.js';
 
 // Tags are lowercase, 1-32 chars, letters/numbers/hyphens/underscores.
 const TAG_REGEX = /^[\w-]{1,32}$/;
-const MAX_TAGS_PER_SOUND = 10;
+export const MAX_TAGS_PER_SOUND = 10;
 const BULK_PAGE_SIZE = 15;
 const BULK_EMBED_DESC_LIMIT = 4000;
 const BULK_COLLECTOR_IDLE_MS = 5 * 60 * 1000;
@@ -29,17 +29,27 @@ function normalizeTag(raw) {
   return raw.trim().toLowerCase().replace(/\s+/g, '-');
 }
 
-function validateTag(raw) {
+export function validateTag(raw) {
   const tag = normalizeTag(raw);
   if (!TAG_REGEX.test(tag)) return null;
   return tag;
 }
 
 // Permission: the sound's uploader OR any admin can add/remove tags.
-function canManageTag(guild, userId, sound) {
+function actorId(actor) {
+  if (!actor) return null;
+  if (typeof actor === 'string') return actor;
+  if (typeof actor.id === 'string') return actor.id;
+  if (typeof actor.user?.id === 'string') return actor.user.id;
+  return null;
+}
+
+function canManageTag(guild, actor, sound) {
+  const userId = actorId(actor);
+  if (!userId) return false;
   if (isOwner(userId)) return true;
   if (sound.uploader_id === userId) return true;
-  return isAdmin(guild, userId);
+  return isAdmin(guild, actor);
 }
 
 function isSoundVisibleInGuild(sound, guildId) {
@@ -373,7 +383,8 @@ async function handleBulkLengthModal(btn, state, render, userId) {
   await submit.update(render());
 }
 
-function applyBulkTagOperation(guild, userId, sounds, selectedIds, tag, mode) {
+function applyBulkTagOperation(guild, actor, sounds, selectedIds, tag, mode) {
+  const userId = actorId(actor);
   let changed = 0;
   let unchanged = 0;
   let denied = 0;
@@ -381,7 +392,7 @@ function applyBulkTagOperation(guild, userId, sounds, selectedIds, tag, mode) {
   for (const sound of sounds) {
     if (!selectedIds.has(String(sound.id))) continue;
 
-    if (!canManageTag(guild, userId, sound)) {
+    if (!canManageTag(guild, actor, sound)) {
       denied++;
       continue;
     }
@@ -417,6 +428,7 @@ export async function handleTagAdd(interaction) {
   await interaction.deferReply({ flags: replyFlags(interaction) });
 
   const guild = interaction.guild;
+  const actor = interaction.member ?? interaction.user.id;
   const rawName = interaction.options.getString('name', true);
   const rawTag = interaction.options.getString('tag', true);
 
@@ -425,7 +437,7 @@ export async function handleTagAdd(interaction) {
     return interaction.editReply(`No sound named **${rawName}**. You sure you know how to spell?`);
   }
 
-  if (!canManageTag(guild, interaction.user.id, sound)) {
+  if (!canManageTag(guild, actor, sound)) {
     return interaction.editReply(
       `You can only tag sounds you uploaded. **${displayName(sound.name)}** was uploaded by <@${sound.uploader_id}> ya dingus.`
     );
@@ -457,6 +469,7 @@ export async function handleTagRemove(interaction) {
   await interaction.deferReply({ flags: replyFlags(interaction) });
 
   const guild = interaction.guild;
+  const actor = interaction.member ?? interaction.user.id;
   const rawName = interaction.options.getString('name', true);
   const rawTag = interaction.options.getString('tag', true);
 
@@ -465,7 +478,7 @@ export async function handleTagRemove(interaction) {
     return interaction.editReply(`No sound named **${rawName}**.`);
   }
 
-  if (!canManageTag(guild, interaction.user.id, sound)) {
+  if (!canManageTag(guild, actor, sound)) {
     return interaction.editReply(
       `You can only manage tags on sounds you uploaded. **${displayName(sound.name)}** was uploaded by <@${sound.uploader_id}>. not you. Cristopher Colombus.`
     );
@@ -682,7 +695,7 @@ export async function handleTagBulk(interaction) {
 
           const result = applyBulkTagOperation(
             guild,
-            interaction.user.id,
+            interaction.member ?? interaction.user.id,
             allSounds,
             state.selectedIds,
             state.tag,

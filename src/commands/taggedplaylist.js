@@ -51,7 +51,7 @@ export async function handleTaggedPlaylist(interaction) {
   }
 
   const isRemotePlay = isRemoteTarget(userVoice, targetChannel);
-  if (isRemotePlay && !isAdmin(guild, member.id)) {
+  if (isRemotePlay && !isAdmin(guild, member)) {
     const remaining = getRemoteCooldownRemainingMs(guild.id, member.id);
     if (remaining > 0) {
       const seconds = Math.ceil(remaining / 1000);
@@ -74,7 +74,7 @@ export async function handleTaggedPlaylist(interaction) {
     });
   }
 
-  const admin = isAdmin(guild, member.id);
+  const admin = isAdmin(guild, member);
   const session = getSession(guild.id);
   if (session && session.channelId !== targetChannel.id) {
     if (admin) {

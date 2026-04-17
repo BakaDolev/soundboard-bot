@@ -28,7 +28,7 @@ export async function handleQuickPlay(interaction) {
   const guild = interaction.guild;
   const member = interaction.member;
   const owner = isOwner(interaction.user.id);
-  const admin = isAdmin(guild, interaction.user.id);
+  const admin = isAdmin(guild, member ?? interaction.user.id);
 
   const youtubeUrl = interaction.options.getString('youtube_url', true);
   if (!YOUTUBE_REGEX.test(youtubeUrl)) {

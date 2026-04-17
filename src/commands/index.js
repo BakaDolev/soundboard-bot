@@ -43,6 +43,13 @@ function buildSlashCommand(name) {
               .setDescription('YouTube video URL (alternative to uploading a file)')
               .setRequired(false)
           )
+          .addStringOption(o =>
+            o
+              .setName('tag')
+              .setDescription('Optional tag to create or add during upload')
+              .setRequired(false)
+              .setAutocomplete(true)
+          )
       )
     )
     .addSubcommand(s =>

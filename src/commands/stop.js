@@ -19,7 +19,7 @@ export async function handleStop(interaction) {
   }
 
   // --- Admin: instant stop --------------------------------------------------
-  if (isAdmin(guild, interaction.user.id)) {
+  if (isAdmin(guild, interaction.member ?? interaction.user.id)) {
     stopSession(guild.id, 'admin-stop');
     cancelVote('stop', guild.id);
     logger.ok('stop by admin', { guildId: guild.id, userId: interaction.user.id });

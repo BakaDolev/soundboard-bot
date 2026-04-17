@@ -15,6 +15,7 @@ import { isAdmin, isOwner } from '../admins.js';
 import { getSetting } from '../settings.js';
 import { storeName, displayName, canonicalize } from '../names.js';
 import { logger } from '../logger.js';
+import { validateTag } from './tag.js';
 import { replyFlags } from './visibility.js';
 
 // Hardcoded absolute ceiling — applies even to admins.
@@ -31,10 +32,11 @@ export async function handleUpload(interaction) {
 
   const attachment = interaction.options.getAttachment('file');
   const youtubeUrl = interaction.options.getString('youtube_url');
+  const rawTag = interaction.options.getString('tag');
 
   const guild = interaction.guild;
   const owner = isOwner(interaction.user.id);
-  const admin = isAdmin(guild, interaction.user.id);
+  const admin = isAdmin(guild, interaction.member ?? interaction.user.id);
 
   // --- Must provide exactly one source -------------------------------------
   if (!attachment && !youtubeUrl) {
@@ -63,6 +65,16 @@ export async function handleUpload(interaction) {
     return interaction.editReply(
       `A sound named **${displayName(name)}** already exists. Try to be more creative next time and pick a different name ;/`
     );
+  }
+
+  let tag = null;
+  if (rawTag) {
+    tag = validateTag(rawTag);
+    if (!tag) {
+      return interaction.editReply(
+        'Invalid tag - use letters, numbers, hyphens or underscores, max 32 chars.'
+      );
+    }
   }
 
   // --- Per-guild settings -------------------------------------------------
@@ -127,10 +139,21 @@ export async function handleUpload(interaction) {
     if (attachment) {
       const inputExt = path.extname(attachment.name || '').toLowerCase() || '.bin';
       tempInput = path.join(tempDir, `${tempId}${inputExt}`);
-      const res = await fetch(attachment.url);
-      if (!res.ok) throw new Error(`Download failed: HTTP ${res.status}`);
-      const buffer = Buffer.from(await res.arrayBuffer());
-      fs.writeFileSync(tempInput, buffer);
+      try {
+        const res = await fetch(attachment.url);
+        if (!res.ok) {
+          const err = new Error(`Download failed: HTTP ${res.status}`);
+          err.userMessage = `I couldn't download that Discord attachment (HTTP ${res.status}). Try attaching the file again.`;
+          throw err;
+        }
+        const buffer = Buffer.from(await res.arrayBuffer());
+        fs.writeFileSync(tempInput, buffer);
+      } catch (err) {
+        if (!err.userMessage) {
+          err.userMessage = 'I could not read that uploaded attachment from Discord. Try attaching it again.';
+        }
+        throw err;
+      }
     } else {
       // Owner: no caps. Admins: 200MB ceiling, no duration cap. Users: 100MB + duration cap.
       const maxSizeBytes = owner ? null : admin ? ADMIN_HARD_CAP_BYTES : USER_INPUT_CAP_BYTES;
@@ -194,7 +217,7 @@ export async function handleUpload(interaction) {
 
     // --- Persist to DB ------------------------------------------------------
     const isPrivate = uploadScope === 'private' ? 1 : 0;
-    queries.insert.run(
+    const insertResult = queries.insert.run(
       name,
       canonicalize(name),
       outFilename,
@@ -207,6 +230,16 @@ export async function handleUpload(interaction) {
       isPrivate
     );
 
+    const soundId = Number(insertResult.lastInsertRowid);
+    if (tag) {
+      queries.addTag.run(soundId, tag, interaction.user.id, Date.now());
+      logger.ok('tag added during upload', {
+        soundId,
+        tag,
+        by: interaction.user.id
+      });
+    }
+
     logger.ok('sound uploaded', {
       name,
       userId: interaction.user.id,
@@ -214,14 +247,16 @@ export async function handleUpload(interaction) {
       duration,
       asAdmin: admin,
       isPrivate,
-      source: youtubeUrl ? 'youtube' : 'file'
+      source: youtubeUrl ? 'youtube' : 'file',
+      tag
     });
 
     const display = displayName(name);
     const scopeLabel = isPrivate ? ' *(private to this server)*' : '';
+    const tagLine = tag ? `\n🏷 Tagged with \`${tag}\`.` : '';
     await interaction.editReply(
       `✅ Uploaded **${display}**${scopeLabel} — ${duration.toFixed(1)}s, ${formatBytes(stats.size)}.\n` +
-        `Play it with \`/sb play name:${display}\`.`
+        `Play it with \`/sb play name:${display}\`.${tagLine}`
     );
 
     // --- Storage warning check (fire and forget) ---------------------------

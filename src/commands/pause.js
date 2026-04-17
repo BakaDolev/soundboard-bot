@@ -33,7 +33,7 @@ export async function handlePause(interaction) {
   }
 
   const userId = interaction.user.id;
-  const admin = isAdmin(guild, userId);
+  const admin = isAdmin(guild, interaction.member ?? userId);
   const initiator = isInitiator(guild.id, userId);
 
   // --- Initiator or admin: instant ----------------------------------------
@@ -124,7 +124,7 @@ export async function handleResume(interaction) {
   }
 
   const userId = interaction.user.id;
-  const admin = isAdmin(guild, userId);
+  const admin = isAdmin(guild, interaction.member ?? userId);
   const initiator = isInitiator(guild.id, userId);
 
   if (admin || initiator) {

@@ -31,7 +31,7 @@ export async function handleDelete(interaction) {
   // Admin of the source guild — only meaningful if the action is happening
   // in that same guild (admin checks need a guild context).
   const adminOfSource =
-    sound.guild_id === guild.id && isAdmin(guild, actor);
+    sound.guild_id === guild.id && isAdmin(guild, interaction.member ?? actor);
 
   const allowed = owner || isUploader || adminOfSource;
 

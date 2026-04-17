@@ -71,7 +71,7 @@ Every command is registered under both `/sb` and `/soundboard`.
 
 | Command | Description |
 |---|---|
-| `/sb upload name:<text> [file:<attachment>] [youtube_url:<text>]` | Upload audio/video file or YouTube link. Exactly one source required. Names accept spaces/hyphens/underscores; stored kebab-case, displayed with spaces. Tag (global vs private) follows the server's `upload_scope`. Admins bypass the storage hard cap (owner always does). |
+| `/sb upload name:<text> [file:<attachment>] [youtube_url:<text>] [tag:<text>]` | Upload audio/video file or YouTube link. Exactly one source required. Names accept spaces/hyphens/underscores; stored kebab-case, displayed with spaces. Optional `tag:` creates a new tag or adds the uploaded sound to an existing one immediately. Tag visibility (global vs private) follows the server's `upload_scope`. Admins bypass the storage hard cap (owner always does). |
 | `/sb play name:<text>` | Play a sound. Overlaps current playback if same channel. Blocked cross-channel for non-admins. Visibility honours `view_scope`. |
 | `/sb quickplay youtube_url:<text> [channel:<channel>]` | Play a YouTube link without saving it — audio is downloaded to a temp file and deleted when playback finishes or the session stops early. Same caps as `/sb upload` (owner unlimited, admin 200 MB / no duration cap, user 100 MB / `max_duration_seconds`) and the same remote-play cooldown rules as `/sb play`. |
 | `/sb playlist tag:<text> [channel:<channel>]` | Play every sound carrying a given tag, in sequence. Scope follows `view_scope`. Missing files are skipped. Shares the same remote-play cooldown rules as `/sb play`. |
@@ -257,6 +257,12 @@ Admins are also global — the bot is designed for a single deployment where adm
 - Fresh sessions no longer start Discord playback until the first PCM source has buffered a few frames, which fixes the "clip sounds like it started late" issue on cold start.
 - Mixer cleanup now distinguishes normal drain (`onFinish`) from early teardown (`onAbort`), so `/sb quickplay` temp files are also removed when playback is stopped or the session disconnects early.
 - `/sb quickplay` and `/sb playlist` now share the same remote-play cooldown rules as `/sb play`.
+
+### 2026-04-17 — Upload tags + reliable server-admin bypass
+- `/sb upload` now accepts an optional `tag:` field. The upload flow reuses the same validation as `/sb tag add`, so one upload can either create a new tag or attach the sound to an existing one.
+- Successful uploads now confirm the tag they added, and upload logs include that tag for easier debugging.
+- Admin checks now accept the live interaction member object, which fixes `admin_mode=server` cases where Discord admins or the guild owner could be treated like regular users because the member cache was cold.
+- Attachment download failures during `/sb upload` now return a clearer user-facing error instead of always falling back to the generic unexpected upload failure reply.
 
 ### 2026-04-10 — Per-guild rework + edit/cut/pause
 - Per-guild settings layer (`guild_settings` table + `src/settings.js`) with env values as defaults. Settable keys: `max_file_size_mb`, `max_duration_seconds`, `max_sounds_per_user`, `spam_pool_size`, `upload_scope`, `view_scope`, `admin_mode`, `storage_warn_gb_override`, `storage_hard_gb_override`. The two storage overrides and `admin_mode` are owner-only.

@@ -26,7 +26,7 @@ function denyNotAdmin(interaction) {
 
 export async function handleSettingsView(interaction) {
   const guild = interaction.guild;
-  if (!isAdmin(guild, interaction.user.id)) {
+  if (!isAdmin(guild, interaction.member ?? interaction.user.id)) {
     return interaction.reply(denyNotAdmin(interaction));
   }
 
@@ -53,7 +53,7 @@ export async function handleSettingsView(interaction) {
 export async function handleSettingsSet(interaction) {
   const guild = interaction.guild;
   const actor = interaction.user.id;
-  if (!isAdmin(guild, actor)) {
+  if (!isAdmin(guild, interaction.member ?? actor)) {
     return interaction.reply(denyNotAdmin(interaction));
   }
 
@@ -89,7 +89,7 @@ export async function handleSettingsSet(interaction) {
 export async function handleSettingsUnset(interaction) {
   const guild = interaction.guild;
   const actor = interaction.user.id;
-  if (!isAdmin(guild, actor)) {
+  if (!isAdmin(guild, interaction.member ?? actor)) {
     return interaction.reply(denyNotAdmin(interaction));
   }
 

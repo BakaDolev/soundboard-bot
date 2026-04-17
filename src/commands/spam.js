@@ -34,7 +34,7 @@ export async function handleSpam(interaction) {
   const guild = interaction.guild;
   const member = interaction.member;
 
-  if (!isAdmin(guild, member.id)) {
+  if (!isAdmin(guild, member)) {
     return interaction.reply({
       content: 'Only admins can use `/sb spam`.',
       flags: replyFlags(interaction)
