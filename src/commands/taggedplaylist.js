@@ -50,6 +50,7 @@ async function advancePlaylist(guild, state) {
 
       try {
         const result = await playSound(guild, state.targetChannel, filePath, sound.name, state.startedBy, {
+          inputProfile: 'stored-opus-ogg',
           onComplete: sourceId => {
             if (playlistStates.get(guild.id) !== state) return;
             if (state.currentSourceId === sourceId) {

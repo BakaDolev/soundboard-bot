@@ -11,6 +11,7 @@ const FRAME_DURATION_MS = 20;
 const FRAME_SAMPLES = (SAMPLE_RATE * FRAME_DURATION_MS / 1000) * CHANNELS;
 const FRAME_BYTES = FRAME_SAMPLES * BYTES_PER_SAMPLE;
 const SOURCE_BUFFER_POLL_MS = 10;
+const STORED_OPUS_INPUT_PROBE_BYTES = '32768';
 
 /**
  * Mixer is a Readable PCM stream that dynamically mixes multiple audio sources.
@@ -38,11 +39,22 @@ export class Mixer extends Readable {
     if (this.destroyed_) return null;
 
     const id = this.nextId++;
-    const args = ['-i', inputPath, '-vn'];
+    const args = ['-nostdin'];
+    if (options.inputProfile === 'stored-opus-ogg') {
+      args.push(
+        '-fflags', '+nobuffer',
+        '-flags', 'low_delay',
+        '-analyzeduration', '0',
+        '-probesize', STORED_OPUS_INPUT_PROBE_BYTES,
+        '-f', 'ogg'
+      );
+    }
+    args.push('-i', inputPath, '-vn');
     if (Number.isFinite(options.maxDurationSeconds) && options.maxDurationSeconds > 0) {
       args.push('-t', String(options.maxDurationSeconds));
     }
     args.push(
+      '-map', '0:a:0',
       '-f', 's16le',
       '-ar', String(SAMPLE_RATE),
       '-ac', String(CHANNELS),
@@ -57,11 +69,21 @@ export class Mixer extends Readable {
       buffer: Buffer.alloc(0),
       ended: false,
       killed: false,
+      firstChunkLogged: false,
+      decodeStartedAt: Date.now(),
       onFinish: onFinish || (() => {}),
       onAbort: options.onAbort || (() => {})
     };
 
     proc.stdout.on('data', chunk => {
+      if (!source.firstChunkLogged) {
+        source.firstChunkLogged = true;
+        logger.info('mixer source produced first pcm chunk', {
+          id,
+          ms: Date.now() - source.decodeStartedAt,
+          profile: options.inputProfile || 'generic'
+        });
+      }
       source.buffer = Buffer.concat([source.buffer, chunk]);
     });
     proc.stdout.on('end', () => {

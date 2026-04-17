@@ -176,7 +176,8 @@ export async function handlePlay(interaction) {
       targetChannel,
       filePath,
       sound.name,
-      member.id
+      member.id,
+      { inputProfile: 'stored-opus-ogg' }
       );
 
       // Only arm the cooldown once the play actually succeeds, so a failed

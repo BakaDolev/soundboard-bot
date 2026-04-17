@@ -269,6 +269,7 @@ Admins are also global — the bot is designed for a single deployment where adm
 - Added `/sb skip`, which only targets the currently playing song inside an active tagged playlist. The playlist initiator and admins can use it without stopping the whole voice session.
 - Tagged playlists now keep lightweight per-guild runtime state so a skip cleanly aborts just the current playlist source and immediately advances to the next song.
 - Fresh-session startup now begins immediately instead of waiting behind extra priming, because the added wait made cold starts feel slower and could make clips feel like they started late.
+- Stored soundboard files now decode with a low-latency ffmpeg input profile (`-nostdin`, reduced probe/analyze, explicit OGG input hint), and the mixer logs time-to-first-PCM for each source so startup delays are easier to diagnose from `general.log`.
 
 ### 2026-04-10 — Per-guild rework + edit/cut/pause
 - Per-guild settings layer (`guild_settings` table + `src/settings.js`) with env values as defaults. Settable keys: `max_file_size_mb`, `max_duration_seconds`, `max_sounds_per_user`, `spam_pool_size`, `upload_scope`, `view_scope`, `admin_mode`, `storage_warn_gb_override`, `storage_hard_gb_override`. The two storage overrides and `admin_mode` are owner-only.

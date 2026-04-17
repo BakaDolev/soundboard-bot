@@ -116,6 +116,7 @@ export async function handleSpam(interaction) {
     }
     try {
       await playSound(guild, targetChannel, filePath, sound.name, member.id, {
+        inputProfile: 'stored-opus-ogg',
         maxDurationSeconds: SPAM_DURATION_MS / 1000
       });
       started++;
