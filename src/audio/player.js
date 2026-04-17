@@ -133,7 +133,7 @@ export async function playSound(guild, voiceChannel, soundFilePath, soundName, u
   let session = sessions.get(guild.id);
 
   if (!session) {
-    session = await createSession(guild, voiceChannel);
+    session = createSession(guild, voiceChannel);
   }
 
   const sourceId = session.mixer.addSource(soundFilePath, () => {
@@ -170,6 +170,19 @@ export async function playSound(guild, voiceChannel, soundFilePath, soundName, u
     startedAt: Date.now()
   });
 
+  // Decode (addSource above) now runs in parallel with the voice handshake.
+  // By the time the connection is Ready, ffmpeg has already buffered a chunk
+  // of PCM, so the first frame pushed to Discord contains real audio instead
+  // of leading silence. Subsequent calls see a resolved/null readyPromise and
+  // this await is instant.
+  if (session.readyPromise) {
+    try {
+      await session.readyPromise;
+    } catch {
+      throw new Error('Could not connect to voice channel');
+    }
+  }
+
   if (!session.started) {
     session.player.play(session.resource);
     session.started = true;
@@ -187,7 +200,7 @@ export async function playSound(guild, voiceChannel, soundFilePath, soundName, u
   return { sourceId, overlapping: session.playing.size };
 }
 
-async function createSession(guild, voiceChannel) {
+function createSession(guild, voiceChannel) {
   const connection = joinVoiceChannel({
     channelId: voiceChannel.id,
     guildId: guild.id,
@@ -195,14 +208,6 @@ async function createSession(guild, voiceChannel) {
     selfDeaf: true,
     selfMute: false
   });
-
-  try {
-    await entersState(connection, VoiceConnectionStatus.Ready, 10_000);
-  } catch (err) {
-    try { connection.destroy(); } catch {}
-    logger.error('voice connection failed', { guildId: guild.id, err: err.message });
-    throw new Error('Could not connect to voice channel');
-  }
 
   const mixer = new Mixer();
   const player = createAudioPlayer({
@@ -236,9 +241,24 @@ async function createSession(guild, voiceChannel) {
     pausedBy: null,
     pauseTimer: null,
     spamming: false,
-    client: guild.client
+    client: guild.client,
+    readyPromise: null
   };
   sessions.set(guild.id, session);
+
+  // Kick off the voice handshake but don't block on it. Callers await this
+  // promise before the first player.play() to ensure the connection is Ready,
+  // while ffmpeg decoding (mixer.addSource) runs in parallel during the wait.
+  session.readyPromise = entersState(connection, VoiceConnectionStatus.Ready, 10_000)
+    .then(() => {
+      session.readyPromise = null;
+      logger.ok('voice session ready', { guildId: guild.id, channelId: voiceChannel.id });
+    })
+    .catch(err => {
+      logger.error('voice connection failed', { guildId: guild.id, err: err.message });
+      cleanupSession(guild.id, 'voice-connect-failed');
+      throw err;
+    });
 
   // When mixer drains completely, schedule cleanup (brief grace period so
   // back-to-back plays don't cause a disconnect/reconnect flicker).

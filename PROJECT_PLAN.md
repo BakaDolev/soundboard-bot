@@ -265,6 +265,11 @@ Admins are also global — the bot is designed for a single deployment where adm
 - Admin checks now accept the live interaction member object, which fixes `admin_mode=server` cases where Discord admins or the guild owner could be treated like regular users because the member cache was cold.
 - Attachment download failures during `/sb upload` now return a clearer user-facing error instead of always falling back to the generic unexpected upload failure reply.
 
+### 2026-04-17 — Parallel voice handshake + decode
+- `createSession` no longer blocks `playSound` on the voice handshake. The mixer, player and resource are wired synchronously, the connection is subscribed, and `entersState(Ready)` is kept as a `readyPromise` on the session.
+- `playSound` spawns the ffmpeg source immediately, then awaits `readyPromise` before the first `player.play()`. This lets decoding run in parallel with the ~1–2s voice handshake, so by the time Discord is ready the first pushed frame already contains real PCM instead of silence. Shaves ~100–300ms off perceived cold-start and removes leading silence.
+- Subsequent `playSound` calls (overlap/spam) see `readyPromise === null` and await nothing — no behaviour change for warm sessions.
+
 ### 2026-04-17 — Playlist skip + faster cold-start playback
 - Added `/sb skip`, which only targets the currently playing song inside an active tagged playlist. The playlist initiator and admins can use it without stopping the whole voice session.
 - Tagged playlists now keep lightweight per-guild runtime state so a skip cleanly aborts just the current playlist source and immediately advances to the next song.
