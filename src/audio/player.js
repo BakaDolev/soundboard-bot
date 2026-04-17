@@ -8,7 +8,7 @@ import {
   NoSubscriberBehavior
 } from '@discordjs/voice';
 import { ActivityType } from 'discord.js';
-import { Mixer, MIXER_CONSTANTS } from './mixer.js';
+import { Mixer } from './mixer.js';
 import { logger } from '../logger.js';
 import { displayName } from '../names.js';
 
@@ -118,8 +118,6 @@ function updateActivity(client) {
 
 // Idle disconnect after this long while paused.
 const PAUSE_IDLE_MS = 2 * 60 * 1000;
-const INITIAL_BUFFER_FRAMES = 2;
-const INITIAL_BUFFER_TIMEOUT_MS = 750;
 
 export function getSession(guildId) {
   return sessions.get(guildId);
@@ -138,7 +136,6 @@ export async function playSound(guild, voiceChannel, soundFilePath, soundName, u
     session = await createSession(guild, voiceChannel);
   }
 
-  const shouldPrimePlayer = !session.started;
   const sourceId = session.mixer.addSource(soundFilePath, () => {
     session.playing.delete(sourceId);
     logger.ok('sound finished', { guildId: guild.id, sound: soundName, userId });
@@ -173,16 +170,9 @@ export async function playSound(guild, voiceChannel, soundFilePath, soundName, u
     startedAt: Date.now()
   });
 
-  if (shouldPrimePlayer) {
-    await session.mixer.waitForSourceBuffer(
-      sourceId,
-      MIXER_CONSTANTS.FRAME_BYTES * INITIAL_BUFFER_FRAMES,
-      INITIAL_BUFFER_TIMEOUT_MS
-    );
-    if (!session.started) {
-      session.player.play(session.resource);
-      session.started = true;
-    }
+  if (!session.started) {
+    session.player.play(session.resource);
+    session.started = true;
   }
 
   logger.ok('sound playing', {

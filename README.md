@@ -164,7 +164,7 @@ Every upload is re-encoded to **Opus in an OGG container** at 128kbps, 48kHz, st
 
 Discord only allows one audio stream per voice connection. To overlap sounds, each active sound spawns its own ffmpeg process that decodes to raw PCM. A custom `Mixer` Readable stream pulls 20ms frames from every active source, sums the samples (clamped to int16), and pushes one combined PCM stream into Discord. When a source drains, it's removed from the mix. When the mix empties, the bot disconnects.
 
-For the first sound in a fresh session, the bot waits for a short PCM buffer before starting Discord playback. That avoids the old "it started a few seconds into the clip" feel while keeping startup snappier than before.
+For the first sound in a fresh session, the bot starts Discord playback immediately so cold starts feel as responsive as possible.
 
 ### Channel lock & admin priority
 

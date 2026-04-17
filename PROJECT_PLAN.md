@@ -46,7 +46,7 @@ Discord only allows one audio stream per voice connection. To play multiple soun
 3. That stream is wrapped in an `AudioResource` with `StreamType.Raw` and played through a single `AudioPlayer`.
 4. When a source drains, it's removed from the mix. When the mixer has no more sources, the session ends and the bot disconnects.
 
-To avoid clips feeling like they start late on a fresh voice session, the player now waits for a short PCM buffer before starting Discord playback. That trades a tiny startup delay for cleaner first-sound timing.
+Fresh voice sessions now start playback immediately instead of waiting behind an extra buffer gate, which keeps cold starts responsive and avoids the "it began a few seconds in" feel that can happen when startup is over-delayed.
 
 ---
 
@@ -268,7 +268,7 @@ Admins are also global — the bot is designed for a single deployment where adm
 ### 2026-04-17 — Playlist skip + faster cold-start playback
 - Added `/sb skip`, which only targets the currently playing song inside an active tagged playlist. The playlist initiator and admins can use it without stopping the whole voice session.
 - Tagged playlists now keep lightweight per-guild runtime state so a skip cleanly aborts just the current playlist source and immediately advances to the next song.
-- Fresh-session startup latency was reduced by trimming the initial PCM priming window and polling the decoder buffer a bit faster, while keeping the startup guard that avoids clipped first words on cold play.
+- Fresh-session startup now begins immediately instead of waiting behind extra priming, because the added wait made cold starts feel slower and could make clips feel like they started late.
 
 ### 2026-04-10 — Per-guild rework + edit/cut/pause
 - Per-guild settings layer (`guild_settings` table + `src/settings.js`) with env values as defaults. Settable keys: `max_file_size_mb`, `max_duration_seconds`, `max_sounds_per_user`, `spam_pool_size`, `upload_scope`, `view_scope`, `admin_mode`, `storage_warn_gb_override`, `storage_hard_gb_override`. The two storage overrides and `admin_mode` are owner-only.
