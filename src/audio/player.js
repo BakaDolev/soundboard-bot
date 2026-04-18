@@ -28,7 +28,7 @@ const sessions = new Map();
 
 // Discord rate-limits gateway presence updates (~5 per 20s). When several
 // sounds start in quick succession (e.g. /sb spam) we'd otherwise burn that
-// budget on intermediate states and the final "Playing nothing" gets dropped,
+// budget on intermediate states and the final "💤 Waiting in your closet 💤" gets dropped,
 // leaving the bot's status frozen on a stale sound name. Coalesce all
 // updateActivity calls into one trailing call after a quiet period.
 const ACTIVITY_DEBOUNCE_MS = 400;
@@ -91,7 +91,7 @@ function applyActivity(client) {
   } else {
     client.user.setActivity({
       name: 'Custom Status',
-      state: '💤 Playing nothing',
+      state: '💤 Waiting in your closet 💤',
       type: ActivityType.Custom
     });
   }
