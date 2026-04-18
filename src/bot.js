@@ -48,7 +48,7 @@ export function createBot() {
     });
     c.user.setActivity({
       name: 'Custom Status',
-      state: '💤 Playing nothing',
+      state: '💤 Sitting in your closet 💤',
       type: ActivityType.Custom
     });
   });
