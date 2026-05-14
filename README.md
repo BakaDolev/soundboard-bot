@@ -24,6 +24,7 @@ Runs as a Docker container on Unraid (or anywhere Docker runs).
 - `/sb pause` / `/sb resume` — initiator and admins pause/resume instantly; other VC members can vote. Bot disconnects 2 minutes after a pause if not resumed.
 - `/sb storage` — storage usage bar, largest sounds, effective per-server limits
 - `/sb admin add @user`, `/sb admin remove @user`, `/sb admin list` 🔒 — manage **per-server** bot admins
+- `/sb spam` — plays a random batch of sounds simultaneously (pool size configurable per server, 10s hard cutoff)
 - `/sb settings view|set|unset` 🔒 — configure per-server limits and toggles, including `/sb spam` pool size
 - Autocomplete on every sound-name option, with loose matching across spaces/hyphens/underscores
 - Every subcommand takes an optional `visibility:true` flag — replies are private by default, pass `visibility:true` to post the reply publicly in the channel (vote messages for `/sb stop` / `/sb pause` / `/sb resume` are always public since others need to click the vote button)
@@ -213,11 +214,16 @@ Soundboard Bot/
 │   ├── config.js             # Env var loader + validation
 │   ├── logger.js             # Diagnostic logger (console + general.log)
 │   ├── storage.js            # Size tracking + warning DM broadcaster
+│   ├── settings.js           # Per-server settings read/write
+│   ├── admins.js             # Per-server admin list management
+│   ├── names.js              # Sound name normalization (kebab-case ↔ display)
+│   ├── voteHelper.js         # Shared vote-to-stop / vote-to-pause logic
 │   ├── db/database.js        # SQLite schema and prepared queries
 │   ├── audio/
 │   │   ├── converter.js      # ffmpeg probe + convert to Opus OGG
 │   │   ├── mixer.js          # PCM mixing Readable stream
-│   │   └── player.js         # Voice connection / session management
+│   │   ├── player.js         # Voice connection / session management
+│   │   └── trim.js           # In-place audio trimming (ffmpeg)
 │   └── commands/             # One file per /sb subcommand
 ├── sounds/                   # Converted .ogg files (volume)
 ├── data/                     # sounds.db + temp upload dir (volume)

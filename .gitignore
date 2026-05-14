@@ -8,3 +8,16 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 Soundboard Bot.code-workspace
+
+# AI agent config files
+.cursorrules
+AGENTS.md
+CLAUDE.md
+CODEX.md
+GEMINI.md
+PROJECT_PLAN.md
+.claude/
+.cursor/
+
+# IDE config
+*.code-workspace
